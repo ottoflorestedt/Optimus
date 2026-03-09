@@ -7,7 +7,10 @@ from kollektivavtal import KOLLEKTIVAVTAL, PBB_2025
 
 # Skattetabell 31, kolumn 1 – 2025 (SKVFS 2024:19)
 # Skatteavdrag (total_skatt/mån) i kr per månadslön
-# OBS: Täcker 38 000–120 000 kr. Utanför intervallet används linjär extrapolation – uppdatera tabellen vid nytt år.
+# OBS: Täcker 38 000–200 000 kr. Utanför intervallet används linjär extrapolation – uppdatera tabellen vid nytt år.
+# Värden 38 000–120 000 kr: direkt ur SKV tabell 31 kol 1.
+# Värden 125 000–200 000 kr: 135 000 kr verifierat mot SKV:s kalkylator (52 702 kr);
+#   övriga interpolerade med ~35,6 % marginalskatt (kommunal 30,62 % + statlig efter grundavdrag).
 SKATTETABELL_31 = {
      38000:  6914,  39000:  7107,  40000:  7620,
      45000:  8957,  50000: 10294,  55000: 11631,
@@ -16,6 +19,9 @@ SKATTETABELL_31 = {
      90000: 24778,  95000: 26905, 100000: 29032,
     105000: 33411, 110000: 37790, 115000: 42578,
     120000: 47367,
+    125000: 49145, 130000: 50924, 135000: 52702,
+    140000: 54519, 150000: 58094, 160000: 61669,
+    180000: 68819, 200000: 75969,
 }
 _T31_KEYS = sorted(SKATTETABELL_31)
 

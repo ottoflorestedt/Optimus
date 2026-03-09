@@ -42,9 +42,9 @@ class TestBeraknaSkatt:
         assert r["nettolön/mån"] + r["total_skatt/mån"] == 20000
 
     def test_over_tabellintervall_netto_plus_skatt_equals_brutto(self):
-        # lon = 150 000 kr ligger över tabellens övre gräns (120 000 kr)
-        r = berakna_skatt(150000)
-        assert r["nettolön/mån"] + r["total_skatt/mån"] == 150000
+        # lon = 250 000 kr ligger över tabellens övre gräns (200 000 kr)
+        r = berakna_skatt(250000)
+        assert r["nettolön/mån"] + r["total_skatt/mån"] == 250000
 
     def test_effektiv_skattesats_ökar_monotont(self):
         r50  = berakna_skatt(50000)
