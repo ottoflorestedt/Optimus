@@ -1218,16 +1218,16 @@ elif sida == "Resultat":
             # ── Ersättning per uttaksnivå ─────────────────────────────
             st.subheader("Ersättning vid föräldraledighet (belopp efter skatt)")
 
-            LG_NETTO   = 180    # lägstanivå netto kr/dag (helgdagar fk 6-7)
             VECKOR_MÅN = 4.33   # genomsnittligt antal veckor per månad
 
             def _uttaks_tabell(fk_res, fl_res, ki):
+                lg_netto = 180 * (1 - ki)   # lägstanivå netto kr/dag efter skatt
                 rader = []
                 for fk_v in range(1, 8):
                     fk_sgi = min(fk_v, 5)                   # sjukpenningnivå-dagar/vecka
                     fk_lg  = max(fk_v - 5, 0)               # lägstanivå-dagar/vecka (helg)
                     fk_mån = round(
-                        (fk_res["fk_netto/dag"] * fk_sgi + LG_NETTO * fk_lg) * VECKOR_MÅN
+                        (fk_res["fk_netto/dag"] * fk_sgi + lg_netto * fk_lg) * VECKOR_MÅN
                     )
                     if fl_res["max_månader"] > 0:
                         fl_mån = round(
@@ -1250,3 +1250,7 @@ elif sida == "Resultat":
             with tc2:
                 st.markdown(f"**{namn_b}**")
                 st.table(_uttaks_tabell(fk_res_b, fl_res_b, ki_b))
+            st.caption(
+                "Beloppen är schablonberäknade utifrån ett månadsgenomsnitt (4,33 veckor/månad). "
+                "Grafen ovan visar faktiska belopp per kalendermånad."
+            )
