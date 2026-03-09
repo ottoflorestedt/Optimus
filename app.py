@@ -80,7 +80,7 @@ def berakna_rot_rut_avdrag(rot, rut):
 
 
 def _komponenter_manad(ar, man, veckor, edited_df, lon, nettolön_mån, ki,
-                       fl_r, fl_bool, col_fk, col_lg, col_sem, barnbidrag):
+                       fl_r, fl_bool, col_fk, col_lg, col_sem, col_ledig, barnbidrag):
     """Beräknar en månads inkomstkomponenter för en förälder givet veckoplan och planredigerare."""
     fk_r = berakna_fk_ersattning(lon, ki)
     _d = date(ar, man, 1)
@@ -109,8 +109,9 @@ def _komponenter_manad(ar, man, veckor, edited_df, lon, nettolön_mån, ki,
         if n == 0:
             continue
         frac  = n / 5
+        ledig = bool(veckor[i][col_ledig])
         fk_wd = min(fk, 5)
-        arb   = max(0, 5 - fk_wd - lg - sem)
+        arb   = 0 if ledig else max(0, 5 - fk_wd - lg - sem)
         tillagg = lon * 0.0043 * sem * frac   # semestertillägg (netto, ej extra skatt)
         lon_n += arb * netto_dag  * frac
         lon_b += arb * brutto_dag * frac
@@ -196,10 +197,11 @@ def generera_plan_veckor(perioder_a: list[dict], perioder_b: list[dict]) -> list
         friday = monday + timedelta(days=4)
         iso    = monday.isocalendar()
 
-        fk_a, s_a = 0, 0
+        fk_a, s_a, ledig_a = 0, 0, False
         for i, p in enumerate(perioder_a):
             leave = _wd_i_vecka(monday, p["start"], p["slut"])
             if leave > 0:
+                ledig_a = True
                 ss = p["sem_start"] if p["sem_dagar"] > 0 else None
                 se = p["sem_slut"]  if p["sem_dagar"] > 0 else None
                 s  = min(_wd_i_vecka(monday, ss, se), sem_kvar_a[i], leave)
@@ -207,10 +209,11 @@ def generera_plan_veckor(perioder_a: list[dict], perioder_b: list[dict]) -> list
                 s_a  += s
                 fk_a += min(min(p["fk_v"], 5), leave - s) + max(p["fk_v"] - 5, 0)
 
-        fk_b, s_b = 0, 0
+        fk_b, s_b, ledig_b = 0, 0, False
         for i, p in enumerate(perioder_b):
             leave = _wd_i_vecka(monday, p["start"], p["slut"])
             if leave > 0:
+                ledig_b = True
                 ss = p["sem_start"] if p["sem_dagar"] > 0 else None
                 se = p["sem_slut"]  if p["sem_dagar"] > 0 else None
                 s  = min(_wd_i_vecka(monday, ss, se), sem_kvar_b[i], leave)
@@ -226,9 +229,11 @@ def generera_plan_veckor(perioder_a: list[dict], perioder_b: list[dict]) -> list
             "fk_dagar_a":       int(fk_a),
             "lg_dagar_a":       0,
             "semester_dagar_a": int(s_a),
+            "ledig_a":          ledig_a,
             "fk_dagar_b":       int(fk_b),
             "lg_dagar_b":       0,
             "semester_dagar_b": int(s_b),
+            "ledig_b":          ledig_b,
         })
         monday += timedelta(weeks=1)
 
@@ -995,9 +1000,9 @@ elif sida == "Resultat":
             for ar, man in months_list:
                 mlab = f"{_MÅN[man-1]} {ar}"
                 ka = _komponenter_manad(ar, man, veckor, edited_df, lon_a, nettolön_mån_a, ki_a,
-                                        fl_r_a, fl_a, COL_FK_A, COL_LG_A, COL_SEM_A, bb_mån)
+                                        fl_r_a, fl_a, COL_FK_A, COL_LG_A, COL_SEM_A, "ledig_a", bb_mån)
                 kb = _komponenter_manad(ar, man, veckor, edited_df, lon_b, nettolön_mån_b, ki_b,
-                                        fl_r_b, fl_b, COL_FK_B, COL_LG_B, COL_SEM_B, bb_mån)
+                                        fl_r_b, fl_b, COL_FK_B, COL_LG_B, COL_SEM_B, "ledig_b", bb_mån)
                 komp_a.append({"Månad": mlab, **ka})
                 komp_b.append({"Månad": mlab, **kb})
 

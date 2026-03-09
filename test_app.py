@@ -48,6 +48,8 @@ class TestGenereraPlanVeckor:
         assert len(veckor) == 1
         assert veckor[0]["fk_dagar_a"] == 5
         assert veckor[0]["fk_dagar_b"] == 0
+        assert veckor[0]["ledig_a"] is True
+        assert veckor[0]["ledig_b"] is False
 
     def test_tva_veckor_summeras(self):
         # Tvåveckorsperiod → 2 veckoposter, sum fk_dagar_a = 10
@@ -84,22 +86,39 @@ class _DF:
 
 
 class TestKomponenterManad:
-    def test_5_fk_dagar_fk_positiv_lon_noll(self):
-        # En hel vecka i jan 2026 med 5 FK-dagar och 0 arbetsdagar →
-        # fk_netto ska vara positivt, lon_netto ska vara noll
-        veckor   = [{"datum_start": date(2026, 1, 5)}]
-        edited_df = _DF([{"fk": 5, "lg": 0, "sem": 0}])
-        fl_r     = {"foraldralon/mån": 0, "max_månader": 0}
-
-        result = _komponenter_manad(
+    def _anropa(self, fk, ledig=True):
+        """Hjälpare: en vecka i jan 2026 med givet antal FK-dagar och ledig-flagga."""
+        veckor    = [{"datum_start": date(2026, 1, 5), "ledig": ledig}]
+        edited_df = _DF([{"fk": fk, "lg": 0, "sem": 0}])
+        fl_r      = {"foraldralon/mån": 0, "max_månader": 0}
+        return _komponenter_manad(
             ar=2026, man=1,
             veckor=veckor, edited_df=edited_df,
-            lon=40000, nettolön_mån=32380,
-            ki=0.2999,
+            lon=40000, nettolön_mån=32380, ki=0.2999,
             fl_r=fl_r, fl_bool=False,
-            col_fk="fk", col_lg="lg", col_sem="sem",
+            col_fk="fk", col_lg="lg", col_sem="sem", col_ledig="ledig",
             barnbidrag=0,
         )
 
+    def test_5_fk_dagar_fk_positiv_lon_noll(self):
+        # En hel vecka i jan 2026 med 5 FK-dagar under ledighet →
+        # fk_netto ska vara positivt, lon_netto ska vara noll
+        result = self._anropa(fk=5, ledig=True)
         assert result["fk_netto"] > 0
         assert result["lon_netto"] == 0
+
+    def test_ledig_2fk_lägre_inkomst_än_5fk(self):
+        # Under ledighet: 2 FK-dagar/vecka ska ge lägre total inkomst än 5 FK-dagar/vecka
+        r2 = self._anropa(fk=2, ledig=True)
+        r5 = self._anropa(fk=5, ledig=True)
+        assert r2["netto_total"] < r5["netto_total"]
+
+    def test_ledig_ger_noll_lon(self):
+        # Under ledighet ska lon_netto alltid vara 0 oavsett FK-dagar
+        r2 = self._anropa(fk=2, ledig=True)
+        assert r2["lon_netto"] == 0
+
+    def test_ej_ledig_ger_lon_vid_lågt_fk(self):
+        # Utanför ledighetsperiod: 2 FK-dagar + 3 övriga = 3 arbetsdagar med lön
+        result = self._anropa(fk=2, ledig=False)
+        assert result["lon_netto"] > 0

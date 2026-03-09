@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:skatteverket.se)",
+      "WebFetch(domain:www7.skatteverket.se)",
+      "WebFetch(domain:skatteverketapi.azure-api.net)",
+      "WebFetch(domain:www.skatteverket.se)",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "WebFetch(domain:skr.se)",
+      "WebSearch",
+      "WebFetch(domain:www.thelocal.se)",
+      "WebFetch(domain:www.scb.se)",
+      "WebFetch(domain:www.statistikdatabasen.scb.se)",
+      "WebFetch(domain:www.ekonomifakta.se)",
+      "WebFetch(domain:api.skatteverket.se)",
+      "WebFetch(domain:www.ekonominu.se)",
+      "WebFetch(domain:www.finansforbundet.se)",
+      "WebFetch(domain:www.ifmetall.se)",
+      "WebFetch(domain:slf.se)",
+      "WebFetch(domain:www.teknikforetagen.se)",
+      "WebFetch(domain:www.sverigesingenjorer.se)",
+      "WebFetch(domain:www.akavia.se)",
+      "WebFetch(domain:www.if-metall.se)",
+      "WebFetch(domain:www.saco.se)",
+      "WebFetch(domain:www.kommunal.se)",
+      "WebFetch(domain:kollega.se)",
+      "WebFetch(domain:www.sverigeslarare.se)",
+      "WebFetch(domain:www.av.se)",
+      "WebFetch(domain:www.helsingborgarenaochscen.se)",
+      "WebFetch(domain:www.st.org)",
+      "WebFetch(domain:tgpayroll.com)",
+      "WebFetch(domain:familjebubblan.se)",
+      "WebFetch(domain:akademssr.se)",
+      "WebFetch(domain:kunskapsstyrningvard.se)",
+      "WebFetch(domain:sobona.se)",
+      "WebFetch(domain:www.ofr.se)",
+      "Bash(rm:*)"
+    ]
+  }
+}
