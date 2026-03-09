@@ -939,9 +939,9 @@ elif sida == "Resultat":
         st.session_state["plan_df"] = edited_df
 
         _overbokad = (
-            edited_df[COL_FK_A] + edited_df[COL_LG_A] + edited_df[COL_SEM_A] > 5
+            edited_df[COL_FK_A].clip(upper=5) + edited_df[COL_LG_A] + edited_df[COL_SEM_A] > 5
         ).any() or (
-            edited_df[COL_FK_B] + edited_df[COL_LG_B] + edited_df[COL_SEM_B] > 5
+            edited_df[COL_FK_B].clip(upper=5) + edited_df[COL_LG_B] + edited_df[COL_SEM_B] > 5
         ).any()
         if _overbokad:
             st.warning(
