@@ -499,23 +499,23 @@ if sida == "Indata":
         with sp_col_a:
             st.session_state["sparade_sgi_a"] = st.number_input(
                 f"Sparade SGI-dagar {namn_a_sp}",
-                min_value=0, max_value=390,
+                min_value=0, max_value=195,
                 value=st.session_state["sparade_sgi_a"],
                 key="wi_sparade_sgi_a")
             st.session_state["sparade_lagsta_a"] = st.number_input(
                 f"Sparade lägstanivådagar {namn_a_sp}",
-                min_value=0, max_value=90,
+                min_value=0, max_value=45,
                 value=st.session_state["sparade_lagsta_a"],
                 key="wi_sparade_lagsta_a")
         with sp_col_b:
             st.session_state["sparade_sgi_b"] = st.number_input(
                 f"Sparade SGI-dagar {namn_b_sp}",
-                min_value=0, max_value=390,
+                min_value=0, max_value=195,
                 value=st.session_state["sparade_sgi_b"],
                 key="wi_sparade_sgi_b")
             st.session_state["sparade_lagsta_b"] = st.number_input(
                 f"Sparade lägstanivådagar {namn_b_sp}",
-                min_value=0, max_value=90,
+                min_value=0, max_value=45,
                 value=st.session_state["sparade_lagsta_b"],
                 key="wi_sparade_lagsta_b")
 
@@ -788,12 +788,12 @@ elif sida == "Resultat":
         COL_FK_B  = "fk_b"
         COL_LG_B  = "lg_b"
         COL_SEM_B = "sem_b"
-        # SP-dagar (sjukpenningnivå) per förälder: 195 dubbeldagar = 390 kalenderdagar, SFB 12 kap
-        SP_TOTAL_A = 390 + st.session_state["sparade_sgi_a"]
-        SP_TOTAL_B = 390 + st.session_state["sparade_sgi_b"]
-        # LG-dagar (lägstanivå) per förälder: 90 dagar, SFB 12 kap
-        LG_TOTAL_A = 90  + st.session_state["sparade_lagsta_a"]
-        LG_TOTAL_B = 90  + st.session_state["sparade_lagsta_b"]
+        # SP-dagar (sjukpenningnivå) per förälder: 195 dagar, SFB 12 kap 12 §
+        SP_TOTAL_A = 195 + st.session_state["sparade_sgi_a"]
+        SP_TOTAL_B = 195 + st.session_state["sparade_sgi_b"]
+        # LG-dagar (lägstanivå) per förälder: 45 dagar, SFB 12 kap 12 §
+        LG_TOTAL_A = 45  + st.session_state["sparade_lagsta_a"]
+        LG_TOTAL_B = 45  + st.session_state["sparade_lagsta_b"]
 
         # ── Initiering av plan_df (en gång per genererad plan) ──
         if "plan_df" not in st.session_state:
