@@ -9,10 +9,10 @@ from typing import List, Optional, Union, Dict, Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from kalkyl import berakna_skatt, berakna_fk_ersattning, berakna_foraldralon, berakna_ranteavdrag
-from skattesatser import KOMMUNALSKATT_2026, KYRKOAVGIFT_2026
+from skattesatser import KOMMUNALSKATT_2026, KYRKOAVGIFT_2026, kommunkod_till_namn
 from kollektivavtal import KOLLEKTIVAVTAL  # noqa: F401 – tillgänglig för informationsändamål
 
 # ── FastAPI-app ────────────────────────────────────────────────
@@ -37,9 +37,11 @@ app.add_middleware(
 
 class Period(BaseModel):
     """En sammanhängande ledighetsperiod för en förälder."""
+    model_config = ConfigDict(populate_by_name=True)
+
     start: date
     slut: date
-    fk_v: int = Field(5, ge=0, le=7, description="FK-dagar per vecka (0–7)")
+    fk_v: int = Field(5, ge=0, le=7, alias="dagar_per_vecka", description="FK-dagar per vecka (0–7)")
     sem_dagar: int = Field(0, ge=0, description="Totalt antal semesterdagar i perioden")
     sem_start: Optional[date] = Field(None, description="Semesterperiodens startdatum")
     sem_slut: Optional[date] = Field(None, description="Semesterperiodens slutdatum")
@@ -63,10 +65,13 @@ class AnpassatAvtal(BaseModel):
 
 class ForaldrarIndata(BaseModel):
     """Alla indata för en förälder."""
+    model_config = ConfigDict(populate_by_name=True)
+
     namn: str = Field("Förälder", description="Förälderns namn (visningsnamn)")
     manadslon: int = Field(40000, ge=1, description="Månadslön brutto (kr)")
     avtal: Union[str, AnpassatAvtal] = Field(
         "Ingen föräldralön",
+        alias="kollektivavtal",
         description=(
             "Kollektivavtalsnamn (t.ex. 'Unionen', 'Finansförbundet') "
             "eller 'Ingen föräldralön', eller ett AnpassatAvtal-objekt."
@@ -78,11 +83,14 @@ class ForaldrarIndata(BaseModel):
     rut: int = Field(0, ge=0, description="Planerade RUT-utgifter per år (kr)")
     kyrka: bool = Field(False, description="Betalar kyrkoavgift")
     forsamling: str = Field("", description="Församlingsnamn (används om kyrka=true)")
+    kommun_kod: Optional[str] = Field(None, description="SCB-kommunkod (t.ex. '0180')")
     perioder: List[Period] = Field(default_factory=list, description="Ledighetsperioder")
 
 
 class Indata(BaseModel):
     """Alla indata till /berakna-endpointen."""
+    model_config = ConfigDict(populate_by_name=True)
+
     foraldrar_a: ForaldrarIndata
     foraldrar_b: ForaldrarIndata
     antal_barn: int = Field(0, ge=0, description="Antal barn utöver det planerade (0 = ett barn)")
@@ -90,7 +98,8 @@ class Indata(BaseModel):
     sparade_sgi_b: int = Field(0, ge=0, le=195, description="Sparade SGI-dagar förälder B")
     sparade_lagsta_a: int = Field(0, ge=0, le=45, description="Sparade lägstanivådagar förälder A")
     sparade_lagsta_b: int = Field(0, ge=0, le=45, description="Sparade lägstanivådagar förälder B")
-    kommun: str = Field("Stockholm", description="Hemkommun (används för kommunalskatt)")
+    kommun: str = Field("Stockholm", description="Hemkommun (används för kommunalskatt, åsidosätts av kommun_kod per förälder)")
+    lan: List[Lan] = Field(default_factory=list, description="Gemensamma lån som fördelas till båda föräldrarna")
 
 
 # ══════════════════════════════════════════════════════════════
@@ -313,12 +322,18 @@ def berakna(indata: Indata):
     - `skatteavdrag`: betald skatt, ränteavdrag, ROT/RUT och skatt efter avdrag per kalenderår
     """
     # ── Kommunal- och kyrkoavgift ─────────────────────────────
-    kommunalskatt_pct = KOMMUNALSKATT_2026.get(indata.kommun, KOMMUNALSKATT_2026["Stockholm"])
-    ki_a = _get_ki(kommunalskatt_pct, indata.foraldrar_a.kyrka, indata.foraldrar_a.forsamling)
-    ki_b = _get_ki(kommunalskatt_pct, indata.foraldrar_b.kyrka, indata.foraldrar_b.forsamling)
-    base_ki    = kommunalskatt_pct / 100
-    kyrkoavg_a = max(0.0, ki_a - base_ki)
-    kyrkoavg_b = max(0.0, ki_b - base_ki)
+    def _resolve_kommunalskatt(f: ForaldrarIndata) -> float:
+        if f.kommun_kod:
+            namn = kommunkod_till_namn(f.kommun_kod)
+            return KOMMUNALSKATT_2026.get(namn, KOMMUNALSKATT_2026["Stockholm"])
+        return KOMMUNALSKATT_2026.get(indata.kommun, KOMMUNALSKATT_2026["Stockholm"])
+
+    kommunalskatt_a = _resolve_kommunalskatt(indata.foraldrar_a)
+    kommunalskatt_b = _resolve_kommunalskatt(indata.foraldrar_b)
+    ki_a = _get_ki(kommunalskatt_a, indata.foraldrar_a.kyrka, indata.foraldrar_a.forsamling)
+    ki_b = _get_ki(kommunalskatt_b, indata.foraldrar_b.kyrka, indata.foraldrar_b.forsamling)
+    kyrkoavg_a = max(0.0, ki_a - kommunalskatt_a / 100)
+    kyrkoavg_b = max(0.0, ki_b - kommunalskatt_b / 100)
 
     lon_a = indata.foraldrar_a.manadslon
     lon_b = indata.foraldrar_b.manadslon
@@ -372,8 +387,10 @@ def berakna(indata: Indata):
     heltid_skatt_a = berakna_skatt(lon_a, ki_a, kyrkoavg_a)["total_skatt/mån"]
     heltid_skatt_b = berakna_skatt(lon_b, ki_b, kyrkoavg_b)["total_skatt/mån"]
 
-    rantor_a   = _berakna_rantor(indata.foraldrar_a.lan)
-    rantor_b   = _berakna_rantor(indata.foraldrar_b.lan)
+    lan_a      = list(indata.foraldrar_a.lan) + list(indata.lan)
+    lan_b      = list(indata.foraldrar_b.lan) + list(indata.lan)
+    rantor_a   = _berakna_rantor(lan_a)
+    rantor_b   = _berakna_rantor(lan_b)
     ranteavd_a = berakna_ranteavdrag(rantor_a)["skatteminskning/år"]
     ranteavd_b = berakna_ranteavdrag(rantor_b)["skatteminskning/år"]
     rot_avd_a, rut_avd_a, rotrut_a = _berakna_rot_rut_avdrag(indata.foraldrar_a.rot, indata.foraldrar_a.rut)
