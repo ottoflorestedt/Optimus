@@ -75,8 +75,10 @@ def berakna_rantor(belopp_lista, ranta_lista):
 
 
 def berakna_rot_rut_avdrag(rot, rut):
-    """30 % på ROT, 50 % på RUT, totalt max 50 000 kr."""
-    return round(min(rot * 0.30 + rut * 0.50, 50_000))
+    """30 % på ROT (max 50 000 kr), 50 % på RUT (max 75 000 kr), kombinerat max 75 000 kr."""
+    rot_avd = min(round(rot * 0.30), 50_000)
+    rut_avd = min(round(rut * 0.50), 75_000)
+    return min(rot_avd + rut_avd, 75_000)
 
 
 def _komponenter_manad(ar, man, veckor, edited_df, lon, nettolön_mån, ki,
@@ -306,6 +308,7 @@ def rot_rut_inputs(kod, namn):
     st.session_state[f"rut_{kod}"] = rut
     avdrag = berakna_rot_rut_avdrag(rot, rut)
     st.success(f"Beräknat ROT/RUT-avdrag per år: **{avdrag:,} kr**")
+    st.caption("ROT max 50 000 kr, RUT max 75 000 kr, kombinerat max 75 000 kr per person och år.")
     return avdrag
 
 
@@ -1111,7 +1114,8 @@ elif sida == "Resultat":
             st.caption(
                 "Skatteberäkningen inkluderar månader utanför den angivna planen, "
                 "där full heltidslön antas för båda föräldrarna. Detta ger en korrekt "
-                "helårsbild för kvittning av ROT-, RUT- och ränteavdrag."
+                "helårsbild för kvittning av ROT-, RUT- och ränteavdrag. "
+                "ROT max 50 000 kr, RUT max 75 000 kr, kombinerat max 75 000 kr per person och år."
             )
 
             rantor_a_år  = berakna_rantor(st.session_state["lan_belopp_a"], st.session_state["lan_ranta_a"])
@@ -1119,12 +1123,12 @@ elif sida == "Resultat":
             ranteavd_a_år = berakna_ranteavdrag(rantor_a_år)["skatteminskning/år"]
             ranteavd_b_år = berakna_ranteavdrag(rantor_b_år)["skatteminskning/år"]
 
-            rot_avd_a = round(st.session_state["rot_a"] * 0.30)
-            rut_avd_a = round(st.session_state["rut_a"] * 0.50)
-            rot_avd_b = round(st.session_state["rot_b"] * 0.30)
-            rut_avd_b = round(st.session_state["rut_b"] * 0.50)
-            rotrut_a  = min(rot_avd_a + rut_avd_a, 50_000)   # årstak 50 000 kr
-            rotrut_b  = min(rot_avd_b + rut_avd_b, 50_000)
+            rot_avd_a = min(round(st.session_state["rot_a"] * 0.30), 50_000)
+            rut_avd_a = min(round(st.session_state["rut_a"] * 0.50), 75_000)
+            rot_avd_b = min(round(st.session_state["rot_b"] * 0.30), 50_000)
+            rut_avd_b = min(round(st.session_state["rut_b"] * 0.50), 75_000)
+            rotrut_a  = min(rot_avd_a + rut_avd_a, 75_000)   # årstak 75 000 kr
+            rotrut_b  = min(rot_avd_b + rut_avd_b, 75_000)
 
             # Plan-skatt-uppslagning: (år, mån) → skatt
             plan_skatt_a = dict(zip(months_list, skatt_a_list))

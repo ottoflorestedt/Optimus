@@ -16,16 +16,26 @@ class TestBeraknaRotRutAvdrag:
         assert berakna_rot_rut_avdrag(100_000, 0) == 30_000
 
     def test_rot_over_tak_kapas(self):
-        # 30 % på 200 000 kr = 60 000 → kapas till 50 000
+        # 30 % på 200 000 kr = 60 000 → kapas till 50 000 (ROT-tak)
         assert berakna_rot_rut_avdrag(200_000, 0) == 50_000
 
-    def test_rut_vid_tak(self):
-        # 50 % på 100 000 kr → 50 000 kr (exakt i tak)
+    def test_rut_under_tak(self):
+        # 50 % på 100 000 kr → 50 000 kr (under 75 000-taket)
         assert berakna_rot_rut_avdrag(0, 100_000) == 50_000
 
-    def test_rot_och_rut_kapas(self):
-        # 30 % × 100 000 + 50 % × 100 000 = 80 000 → kapas till 50 000
-        assert berakna_rot_rut_avdrag(100_000, 100_000) == 50_000
+    def test_rut_over_tak_kapas(self):
+        # 50 % på 200 000 kr = 100 000 → kapas till 75 000 (RUT-tak)
+        assert berakna_rot_rut_avdrag(0, 200_000) == 75_000
+
+    def test_rot_och_rut_under_kombinerat_tak(self):
+        # 30 % × 100 000 + 50 % × 100 000 = 30 000 + 50 000 = 80 000 → kapas till 75 000
+        assert berakna_rot_rut_avdrag(100_000, 100_000) == 75_000
+
+    def test_kombinerat_tak_kapas(self):
+        # rot_avd = min(50 000 × 0,30, 50 000) = 15 000
+        # rut_avd = min(150 000 × 0,50, 75 000) = 75 000
+        # kombinerat = min(90 000, 75 000) = 75 000
+        assert berakna_rot_rut_avdrag(50_000, 150_000) == 75_000
 
 
 # ============================================================
