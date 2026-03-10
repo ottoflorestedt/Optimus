@@ -118,8 +118,8 @@ def _komponenter_manad(ar, man, veckor, edited_df, lon, nettolön_mån, ki,
         # sem_n = full nettolön under semesterdagar + semestertillägg
         sem_n += sem * netto_dag  * frac + tillagg
         sem_b += sem * brutto_dag * frac + tillagg   # tillägg är skattefritt (netto=brutto)
-        fk_n  += (fk_ndag * fk_wd + fk_ndag * max(fk - 5, 0) + lg_ndag * lg) * frac
-        fk_b  += (fk_bdag * fk_wd + fk_bdag * max(fk - 5, 0) + lg_bdag * lg) * frac
+        fk_n  += (fk_ndag * fk_wd + lg_ndag * max(fk - 5, 0) + lg_ndag * lg) * frac
+        fk_b  += (fk_bdag * fk_wd + lg_bdag * max(fk - 5, 0) + lg_bdag * lg) * frac
         if fl_bool and fk > 0:
             fl_n += fl_ndag * fk_wd * frac
             fl_b += fl_bdag * fk_wd * frac
