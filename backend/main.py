@@ -496,9 +496,39 @@ def berakna(indata: Indata):
         for v in veckor
     ]
 
+    # ── Dagssaldo ─────────────────────────────────────────────
+    sp_anvanda_a = sum(v["fk_a"] for v in veckor)
+    lg_anvanda_a = sum(v["lg_a"] for v in veckor)
+    sp_anvanda_b = sum(v["fk_b"] for v in veckor)
+    lg_anvanda_b = sum(v["lg_b"] for v in veckor)
+    sp_tot_a = indata.sparade_sgi_a + 195
+    lg_tot_a = indata.sparade_lagsta_a + 45
+    sp_tot_b = indata.sparade_sgi_b + 195
+    lg_tot_b = indata.sparade_lagsta_b + 45
+
+    dagssaldo = {
+        "a": {
+            "sp_totalt":  sp_tot_a,
+            "sp_anvanda": sp_anvanda_a,
+            "sp_kvar":    sp_tot_a - sp_anvanda_a,
+            "lg_totalt":  lg_tot_a,
+            "lg_anvanda": lg_anvanda_a,
+            "lg_kvar":    lg_tot_a - lg_anvanda_a,
+        },
+        "b": {
+            "sp_totalt":  sp_tot_b,
+            "sp_anvanda": sp_anvanda_b,
+            "sp_kvar":    sp_tot_b - sp_anvanda_b,
+            "lg_totalt":  lg_tot_b,
+            "lg_anvanda": lg_anvanda_b,
+            "lg_kvar":    lg_tot_b - lg_anvanda_b,
+        },
+    }
+
     return {
         "plan_veckor":     plan_veckor,
         "manadsinkomst_a": komp_a,
         "manadsinkomst_b": komp_b,
         "skatteavdrag":    skatteavdrag,
+        "dagssaldo":       dagssaldo,
     }
