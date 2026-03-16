@@ -93,6 +93,8 @@ class ForaldrarIndata(BaseModel):
     kommun_kod: Optional[str] = Field(None, description="SCB-kommunkod (t.ex. '0180')")
     perioder: List[Period] = Field(default_factory=list, description="Ledighetsperioder")
     semester_perioder: List[SemesterPeriod] = Field(default_factory=list, description="Fristående semesterperioder")
+    tio_dagar_start: Optional[str] = Field(None, description="Startdatum för 10-dagarna (YYYY-MM-DD)")
+    tio_dagar_antal: int = Field(0, ge=0, le=10, description="Antal tio-dagar som ska tas ut (max 10)")
 
 
 class Indata(BaseModel):
@@ -176,15 +178,22 @@ def _generera_plan_veckor(
     perioder_b: List[Period],
     semester_perioder_a: Optional[List[SemesterPeriod]] = None,
     semester_perioder_b: Optional[List[SemesterPeriod]] = None,
+    tio_start_a: Optional[date] = None,
+    tio_antal_a: int = 0,
+    tio_start_b: Optional[date] = None,
+    tio_antal_b: int = 0,
 ) -> List[dict]:
     """
     Skapar en lista av vecko-dicts från ledighetsperioder per förälder.
     Varje rad har nycklarna: vecka, ar, datum_start, datum_slut,
-    fk_a, lg_a, sem_a, ledig_a, fk_b, lg_b, sem_b, ledig_b.
+    fk_a, lg_a, sem_a, tio_a, ledig_a, fk_b, lg_b, sem_b, tio_b, ledig_b.
 
     semester_perioder_a/b är fristående semesterperioder som läggs ovanpå
     Period-baserad semester. Dagar ersätter fk-dagar när personen är ledig,
     eller räknas som semesterdagar från arbete annars.
+
+    tio_start_a/b och tio_antal_a/b markerar 10-dagar vid barnets födelse
+    (tillfällig föräldrapenning). Dessa räknas INTE av från fk-dagarna.
     """
     all_dates = [getattr(p, k) for p in perioder_a + perioder_b for k in ("start", "slut")]
     if not all_dates:
@@ -203,6 +212,12 @@ def _generera_plan_veckor(
     sp_parsed_b = [(date.fromisoformat(sp.start), date.fromisoformat(sp.slut)) for sp in _sp_b]
     sp_kvar_a   = [sp.dagar for sp in _sp_a]
     sp_kvar_b   = [sp.dagar for sp in _sp_b]
+
+    # 10-dagar: fönster = [tio_start, tio_start + 59 dagar], max antal arbetsdagar = tio_antal
+    tio_slut_a = (tio_start_a + timedelta(days=59)) if tio_start_a else None
+    tio_slut_b = (tio_start_b + timedelta(days=59)) if tio_start_b else None
+    tio_kvar_a = tio_antal_a
+    tio_kvar_b = tio_antal_b
 
     veckor: List[dict] = []
 
@@ -231,6 +246,15 @@ def _generera_plan_veckor(
                 s_a          += take
                 fk_a          = max(0, fk_a - take)
 
+        # 10-dagar för A: räknas separat, påverkar ej fk
+        t_a = 0
+        if tio_start_a and tio_kvar_a > 0:
+            overlap = _wd_i_vecka(monday, tio_start_a, tio_slut_a)
+            take    = min(overlap, tio_kvar_a)
+            if take > 0:
+                tio_kvar_a -= take
+                t_a         = take
+
         fk_b, s_b, ledig_b = 0, 0, False
         for i, p in enumerate(perioder_b):
             leave = _wd_i_vecka(monday, p.start, p.slut)
@@ -252,18 +276,29 @@ def _generera_plan_veckor(
                 s_b          += take
                 fk_b          = max(0, fk_b - take)
 
+        # 10-dagar för B: räknas separat, påverkar ej fk
+        t_b = 0
+        if tio_start_b and tio_kvar_b > 0:
+            overlap = _wd_i_vecka(monday, tio_start_b, tio_slut_b)
+            take    = min(overlap, tio_kvar_b)
+            if take > 0:
+                tio_kvar_b -= take
+                t_b         = take
+
         veckor.append({
-            "vecka":      int(iso[1]),
-            "ar":         int(iso[0]),
+            "vecka":       int(iso[1]),
+            "ar":          int(iso[0]),
             "datum_start": monday,
             "datum_slut":  friday,
             "fk_a":        int(fk_a),
             "lg_a":        0,
             "sem_a":       int(s_a),
+            "tio_a":       int(t_a),
             "ledig_a":     ledig_a,
             "fk_b":        int(fk_b),
             "lg_b":        0,
             "sem_b":       int(s_b),
+            "tio_b":       int(t_b),
             "ledig_b":     ledig_b,
         })
         monday += timedelta(weeks=1)
@@ -293,7 +328,7 @@ class _DF:
 # ── Portad från app.py: _komponenter_manad ───────────────────
 
 def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
-                       fl_r, fl_bool, col_fk, col_lg, col_sem, col_ledig, barnbidrag):
+                       fl_r, fl_bool, col_fk, col_lg, col_sem, col_tio, col_ledig, barnbidrag):
     """Beräknar en månads inkomstkomponenter för en förälder givet veckoplan."""
     fk_r = berakna_fk_ersattning(lon, ki)
     _d = date(ar, man, 1)
@@ -310,12 +345,16 @@ def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
     lg_bdag = 180
     fl_ndag = (fl_r["foraldralon/mån"] * (1 - ki) / wd_i_man) if (fl_bool and fl_r["max_månader"] > 0 and wd_i_man) else 0
     fl_bdag = (fl_r["foraldralon/mån"] / wd_i_man) if (fl_bool and fl_r["max_månader"] > 0 and wd_i_man) else 0
+    # 10-dagar: timlöneavdrag = lon/21 per dag (brutto)
+    tio_avdrag_n = (lon / 21) * (1 - ki)  # netto löneavdrag per tio-dag
+    tio_avdrag_b = lon / 21               # brutto löneavdrag per tio-dag
     lon_n = lon_b = sem_b = 0.0
-    fk_n = fk_b = fl_n = fl_b = sem_n = 0.0
+    fk_n = fk_b = fl_n = fl_b = sem_n = tio_n = tio_b_sum = 0.0
     for i in range(len(veckor)):
         fk  = int(df.iloc[i][col_fk])
         lg  = int(df.iloc[i][col_lg])
         sem = int(df.iloc[i][col_sem])
+        tio = int(df.iloc[i][col_tio])
         n = sum(1 for d in range(5)
                 if (veckor[i]["datum_start"] + timedelta(days=d)).year == ar
                 and (veckor[i]["datum_start"] + timedelta(days=d)).month == man)
@@ -324,7 +363,7 @@ def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
         frac  = n / 5
         ledig = bool(veckor[i][col_ledig])
         fk_wd = min(fk, 5)
-        arb   = 0 if ledig else max(0, 5 - fk_wd - lg - sem)
+        arb   = 0 if ledig else max(0, 5 - fk_wd - lg - sem - tio)
         tillagg = lon * 0.0043 * sem * frac
         lon_n += arb * netto_dag  * frac
         lon_b += arb * brutto_dag * frac
@@ -335,13 +374,18 @@ def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
         if fl_bool and fk > 0:
             fl_n += fl_ndag * fk_wd * frac
             fl_b += fl_bdag * fk_wd * frac
-    total_n = lon_n + fk_n + fl_n + sem_n + barnbidrag
-    total_b = lon_b + fk_b + fl_b + sem_b + barnbidrag
+        # 10-dagar: partiell lön (netto_dag - avdrag) + FK, ingen FL
+        if tio > 0:
+            tio_n     += (netto_dag  - tio_avdrag_n + fk_ndag) * tio * frac
+            tio_b_sum += (brutto_dag - tio_avdrag_b + fk_bdag) * tio * frac
+    total_n = lon_n + fk_n + fl_n + sem_n + tio_n + barnbidrag
+    total_b = lon_b + fk_b + fl_b + sem_b + tio_b_sum + barnbidrag
     return {
         "lon_netto":   round(lon_n),
         "sem_netto":   round(sem_n),
         "fk_netto":    round(fk_n),
         "fl_netto":    round(fl_n),
+        "tio_netto":   round(tio_n),
         "bb":          barnbidrag,
         "skatt":       round(total_b - total_n),
         "netto_total": round(total_n),
@@ -453,11 +497,18 @@ def berakna(indata: Indata):
     nettolön_mån_b = berakna_skatt(lon_b, ki_b, kyrkoavg_b)["nettolön/mån"]
 
     # ── Veckoplan ─────────────────────────────────────────────
+    def _parse_tio_start(f: ForaldrarIndata) -> Optional[date]:
+        return date.fromisoformat(f.tio_dagar_start) if f.tio_dagar_start else None
+
     veckor = _generera_plan_veckor(
         indata.foraldrar_a.perioder,
         indata.foraldrar_b.perioder,
         indata.foraldrar_a.semester_perioder,
         indata.foraldrar_b.semester_perioder,
+        tio_start_a=_parse_tio_start(indata.foraldrar_a),
+        tio_antal_a=indata.foraldrar_a.tio_dagar_antal,
+        tio_start_b=_parse_tio_start(indata.foraldrar_b),
+        tio_antal_b=indata.foraldrar_b.tio_dagar_antal,
     )
     if not veckor:
         return {"plan_veckor": [], "manadsinkomst_a": [], "manadsinkomst_b": [], "skatteavdrag": {}}
@@ -482,9 +533,9 @@ def berakna(indata: Indata):
     komp_b: List[dict] = []
     for ar, man in months_list:
         ka = _komponenter_manad(ar, man, veckor, df, lon_a, nettolön_mån_a, ki_a,
-                                fl_r_a, fl_a, "fk_a", "lg_a", "sem_a", "ledig_a", bb_mån)
+                                fl_r_a, fl_a, "fk_a", "lg_a", "sem_a", "tio_a", "ledig_a", bb_mån)
         kb = _komponenter_manad(ar, man, veckor, df, lon_b, nettolön_mån_b, ki_b,
-                                fl_r_b, fl_b, "fk_b", "lg_b", "sem_b", "ledig_b", bb_mån)
+                                fl_r_b, fl_b, "fk_b", "lg_b", "sem_b", "tio_b", "ledig_b", bb_mån)
         komp_a.append({"ar": ar, "man": man, "manad": f"{MAN[man-1]} {ar}", **ka})
         komp_b.append({"ar": ar, "man": man, "manad": f"{MAN[man-1]} {ar}", **kb})
 
