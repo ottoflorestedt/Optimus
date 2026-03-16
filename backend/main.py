@@ -472,29 +472,28 @@ def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
         if tio > 0:
             tio_n     += (netto_dag  - tio_avdrag_n + fk_ndag) * tio * frac
             tio_b_sum += (brutto_dag - tio_avdrag_b + fk_bdag) * tio * frac
-        # Sjukskrivning
-        if total_sjuk > 0:
-            grad_f = sk_grad / 100
-            # Fas 1 – sjuklöneperiod (dag 1-14): arbetsgivaren betalar 80% av grad*lön
-            if sk_lon > 0:
-                sjlon_b = grad_f * 0.80 * lon / 21
-                sjlon_n = sjlon_b * (1 - ki)
-                sjuk_n     += sjlon_n * sk_lon * frac
-                sjuk_b_sum += sjlon_b * sk_lon * frac
-                if sk_karens:
-                    sjuk_n     -= karens_netto  * frac
-                    sjuk_b_sum -= karens_brutto * frac
-            # Fas 2 – FK sjukpenning (dag 15-90): FK + AG-tillägg om avtal
-            if sk_fk > 0:
-                sjuk_n     += fk_sp_netto  * sk_fk * frac
-                sjuk_b_sum += fk_sp_brutto * sk_fk * frac
-                if fl_bool:
-                    sjuk_n     += ag_netto  * sk_fk * frac
-                    sjuk_b_sum += ag_brutto * sk_fk * frac
-            # Fas 3 – lång-FK (dag 91+): FK sjukpenning utan AG-tillägg
-            if sk_lag > 0:
-                sjuk_n     += fk_sp_netto  * sk_lag * frac
-                sjuk_b_sum += fk_sp_brutto * sk_lag * frac
+        # Fas 1 – sjuklön (dag 1-14): arbetsgivaren betalar 80% av lön.
+        # Sjuklönen ÄR lön → bidrar till lon_n, inte sjuk_n.
+        if sk_lon > 0:
+            grad_f       = sk_grad / 100
+            sjlon_b_dag  = grad_f * 0.80 * lon / 21
+            sjlon_n_dag  = sjlon_b_dag * (1 - ki)
+            lon_n += sjlon_n_dag * sk_lon * frac
+            lon_b += sjlon_b_dag * sk_lon * frac
+            if sk_karens:
+                lon_n -= karens_netto  * frac
+                lon_b -= karens_brutto * frac
+        # Fas 2 – FK sjukpenning (dag 15-90): FK + AG-tillägg om avtal
+        if sk_fk > 0:
+            sjuk_n     += fk_sp_netto  * sk_fk * frac
+            sjuk_b_sum += fk_sp_brutto * sk_fk * frac
+            if fl_bool:
+                sjuk_n     += ag_netto  * sk_fk * frac
+                sjuk_b_sum += ag_brutto * sk_fk * frac
+        # Fas 3 – lång-FK (dag 91+): FK sjukpenning utan AG-tillägg
+        if sk_lag > 0:
+            sjuk_n     += fk_sp_netto  * sk_lag * frac
+            sjuk_b_sum += fk_sp_brutto * sk_lag * frac
     total_n = lon_n + fk_n + fl_n + sem_n + tio_n + sjuk_n + barnbidrag
     total_b = lon_b + fk_b + fl_b + sem_b + tio_b_sum + sjuk_b_sum + barnbidrag
     return {
@@ -637,9 +636,12 @@ def berakna(indata: Indata):
 
     # ── Månadsberäkning ───────────────────────────────────────
     bb_mån = round(1250 * indata.antal_barn / 2)
-    y0, m0 = veckor[0]["datum_start"].year,  veckor[0]["datum_start"].month
-    last   = veckor[-1]["datum_start"] + timedelta(days=4)
-    y1, m1 = last.year, last.month
+    y0, m0 = veckor[0]["datum_start"].year, veckor[0]["datum_start"].month
+    # Använd det faktiska sista slutdatumet från perioder (inte veckans fredag)
+    # för att undvika att en delvis överlappande vecka drar in nästa månad i months_list.
+    _all_period_ends = [p.slut for p in indata.foraldrar_a.perioder + indata.foraldrar_b.perioder]
+    _last_leave_day  = max(_all_period_ends) if _all_period_ends else veckor[-1]["datum_start"]
+    y1, m1 = _last_leave_day.year, _last_leave_day.month
     months_list: List[tuple] = []
     y, m = y0, m0
     while (y, m) <= (y1, m1):
