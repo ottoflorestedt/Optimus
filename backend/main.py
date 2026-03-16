@@ -539,6 +539,38 @@ def berakna(indata: Indata):
         komp_a.append({"ar": ar, "man": man, "manad": f"{MAN[man-1]} {ar}", **ka})
         komp_b.append({"ar": ar, "man": man, "manad": f"{MAN[man-1]} {ar}", **kb})
 
+    # ── 6 månader normalinkomst före och efter ledigheten ─────
+    def _add_months(yr: int, mo: int, n: int):
+        mo += n
+        yr += (mo - 1) // 12
+        mo = (mo - 1) % 12 + 1
+        return yr, mo
+
+    def _normalmanad(ar, man, lon_netto, skatt, bb):
+        return {
+            "ar": ar, "man": man,
+            "manad":     f"{MAN[man-1]} {ar}",
+            "lon_netto": lon_netto,
+            "sem_netto": 0,
+            "fk_netto":  0,
+            "fl_netto":  0,
+            "tio_netto": 0,
+            "bb":        bb,
+            "skatt":     skatt,
+            "netto_total": lon_netto + bb,
+        }
+
+    skatt_a = berakna_skatt(lon_a, ki_a, kyrkoavg_a)["total_skatt/mån"]
+    skatt_b = berakna_skatt(lon_b, ki_b, kyrkoavg_b)["total_skatt/mån"]
+
+    fore_a  = [_normalmanad(*_add_months(y0, m0, i - 6), nettolön_mån_a, skatt_a, 0) for i in range(6)]
+    fore_b  = [_normalmanad(*_add_months(y0, m0, i - 6), nettolön_mån_b, skatt_b, 0) for i in range(6)]
+    efter_a = [_normalmanad(*_add_months(y1, m1, i + 1), nettolön_mån_a, skatt_a, bb_mån) for i in range(6)]
+    efter_b = [_normalmanad(*_add_months(y1, m1, i + 1), nettolön_mån_b, skatt_b, bb_mån) for i in range(6)]
+
+    komp_a = fore_a + komp_a + efter_a
+    komp_b = fore_b + komp_b + efter_b
+
     # ── Skatteavdragstabell ───────────────────────────────────
     plan_skatt_a = {(ar, man): k["skatt"] for k, (ar, man) in zip(komp_a, months_list)}
     plan_skatt_b = {(ar, man): k["skatt"] for k, (ar, man) in zip(komp_b, months_list)}
