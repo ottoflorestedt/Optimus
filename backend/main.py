@@ -63,6 +63,13 @@ class AnpassatAvtal(BaseModel):
     fast_belopp: float = Field(0.0, ge=0.0, description="Fast månatlig föräldralön (kr), åsidosätter procentberäkning")
 
 
+class SemesterPeriod(BaseModel):
+    """En fristående semesterperiod."""
+    start: str   # "YYYY-MM-DD"
+    slut: str    # "YYYY-MM-DD"
+    dagar: int   # antal semesterdagar (arbetsdagar)
+
+
 class ForaldrarIndata(BaseModel):
     """Alla indata för en förälder."""
     model_config = ConfigDict(populate_by_name=True)
@@ -85,6 +92,7 @@ class ForaldrarIndata(BaseModel):
     forsamling: str = Field("", description="Församlingsnamn (används om kyrka=true)")
     kommun_kod: Optional[str] = Field(None, description="SCB-kommunkod (t.ex. '0180')")
     perioder: List[Period] = Field(default_factory=list, description="Ledighetsperioder")
+    semester_perioder: List[SemesterPeriod] = Field(default_factory=list, description="Fristående semesterperioder")
 
 
 class Indata(BaseModel):
