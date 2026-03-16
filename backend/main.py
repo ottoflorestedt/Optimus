@@ -215,7 +215,19 @@ def _generera_plan_veckor(
     tio_start_a/b markerar 10-dagar (tillfällig FP), påverkar ej fk.
     sjukskrivningar_a/b: tre faser – sjuklön (dag 1-14), FK (15-90), lång-FK (91+).
     """
+    # Parsa sjukskrivningar tidigt för att inkludera i global_start/global_end
+    _sk_a = sjukskrivningar_a or []
+    _sk_b = sjukskrivningar_b or []
+    sk_parsed_a = [(date.fromisoformat(s.start), date.fromisoformat(s.slut), s.grad) for s in _sk_a]
+    sk_parsed_b = [(date.fromisoformat(s.start), date.fromisoformat(s.slut), s.grad) for s in _sk_b]
+    sk_wd_a = [0] * len(_sk_a)  # löpande räknare: hur många sjuk-arbetsdagar redan konsumerade
+    sk_wd_b = [0] * len(_sk_b)
+
     all_dates = [getattr(p, k) for p in perioder_a + perioder_b for k in ("start", "slut")]
+    # Inkludera sjukskrivningsdatum så att veckoplanen täcker hela sjukperioden,
+    # även om den börjar/slutar utanför föräldraledighetens datum.
+    for ss, se, _ in sk_parsed_a + sk_parsed_b:
+        all_dates += [ss, se]
     if not all_dates:
         return []
 
@@ -238,14 +250,6 @@ def _generera_plan_veckor(
     tio_slut_b = (tio_start_b + timedelta(days=59)) if tio_start_b else None
     tio_kvar_a = tio_antal_a
     tio_kvar_b = tio_antal_b
-
-    # Sjukskrivningar: parsa datum och håll löpande arbetsdag-räknare per period
-    _sk_a = sjukskrivningar_a or []
-    _sk_b = sjukskrivningar_b or []
-    sk_parsed_a = [(date.fromisoformat(s.start), date.fromisoformat(s.slut), s.grad) for s in _sk_a]
-    sk_parsed_b = [(date.fromisoformat(s.start), date.fromisoformat(s.slut), s.grad) for s in _sk_b]
-    sk_wd_a = [0] * len(_sk_a)  # löpande räknare: hur många sjuk-arbetsdagar redan konsumerade
-    sk_wd_b = [0] * len(_sk_b)
 
     veckor: List[dict] = []
 
@@ -644,11 +648,13 @@ def berakna(indata: Indata):
     # ── Månadsberäkning ───────────────────────────────────────
     bb_mån = round(1250 * indata.antal_barn / 2)
     y0, m0 = veckor[0]["datum_start"].year, veckor[0]["datum_start"].month
-    # Använd det faktiska sista slutdatumet från perioder (inte veckans fredag)
-    # för att undvika att en delvis överlappande vecka drar in nästa månad i months_list.
+    # Sista månaden = sista datum bland perioder OCH sjukskrivningar
     _all_period_ends = [p.slut for p in indata.foraldrar_a.perioder + indata.foraldrar_b.perioder]
-    _last_leave_day  = max(_all_period_ends) if _all_period_ends else veckor[-1]["datum_start"]
-    y1, m1 = _last_leave_day.year, _last_leave_day.month
+    _all_sjuk_ends   = [date.fromisoformat(s.slut)
+                        for s in indata.foraldrar_a.sjukskrivningar + indata.foraldrar_b.sjukskrivningar]
+    _all_ends = _all_period_ends + _all_sjuk_ends
+    _last_day  = max(_all_ends) if _all_ends else veckor[-1]["datum_start"]
+    y1, m1 = _last_day.year, _last_day.month
     months_list: List[tuple] = []
     y, m = y0, m0
     while (y, m) <= (y1, m1):
