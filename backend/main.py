@@ -171,11 +171,20 @@ def _wd_i_vecka(monday: date, period_start, period_end) -> int:
 
 # ── Portad från app.py: generera_plan_veckor ─────────────────
 
-def _generera_plan_veckor(perioder_a: List[Period], perioder_b: List[Period]) -> List[dict]:
+def _generera_plan_veckor(
+    perioder_a: List[Period],
+    perioder_b: List[Period],
+    semester_perioder_a: Optional[List[SemesterPeriod]] = None,
+    semester_perioder_b: Optional[List[SemesterPeriod]] = None,
+) -> List[dict]:
     """
     Skapar en lista av vecko-dicts från ledighetsperioder per förälder.
     Varje rad har nycklarna: vecka, ar, datum_start, datum_slut,
     fk_a, lg_a, sem_a, ledig_a, fk_b, lg_b, sem_b, ledig_b.
+
+    semester_perioder_a/b är fristående semesterperioder som läggs ovanpå
+    Period-baserad semester. Dagar ersätter fk-dagar när personen är ledig,
+    eller räknas som semesterdagar från arbete annars.
     """
     all_dates = [getattr(p, k) for p in perioder_a + perioder_b for k in ("start", "slut")]
     if not all_dates:
@@ -186,6 +195,15 @@ def _generera_plan_veckor(perioder_a: List[Period], perioder_b: List[Period]) ->
     monday       = global_start - timedelta(days=global_start.weekday())
     sem_kvar_a   = [p.sem_dagar for p in perioder_a]
     sem_kvar_b   = [p.sem_dagar for p in perioder_b]
+
+    # Parsa fristående semesterperioder till date-objekt och tracka kvarvarande dagar
+    _sp_a = semester_perioder_a or []
+    _sp_b = semester_perioder_b or []
+    sp_parsed_a = [(date.fromisoformat(sp.start), date.fromisoformat(sp.slut)) for sp in _sp_a]
+    sp_parsed_b = [(date.fromisoformat(sp.start), date.fromisoformat(sp.slut)) for sp in _sp_b]
+    sp_kvar_a   = [sp.dagar for sp in _sp_a]
+    sp_kvar_b   = [sp.dagar for sp in _sp_b]
+
     veckor: List[dict] = []
 
     while monday <= global_end:
@@ -204,6 +222,15 @@ def _generera_plan_veckor(perioder_a: List[Period], perioder_b: List[Period]) ->
                 s_a  += s
                 fk_a += min(min(p.fk_v, 5), leave - s) + max(p.fk_v - 5, 0)
 
+        # Fristående semesterperioder för A: sem ersätter fk om personen är ledig
+        for i, (sp_start, sp_slut) in enumerate(sp_parsed_a):
+            overlap = _wd_i_vecka(monday, sp_start, sp_slut)
+            take    = min(overlap, sp_kvar_a[i])
+            if take > 0:
+                sp_kvar_a[i] -= take
+                s_a          += take
+                fk_a          = max(0, fk_a - take)
+
         fk_b, s_b, ledig_b = 0, 0, False
         for i, p in enumerate(perioder_b):
             leave = _wd_i_vecka(monday, p.start, p.slut)
@@ -215,6 +242,15 @@ def _generera_plan_veckor(perioder_a: List[Period], perioder_b: List[Period]) ->
                 sem_kvar_b[i] -= s
                 s_b  += s
                 fk_b += min(min(p.fk_v, 5), leave - s) + max(p.fk_v - 5, 0)
+
+        # Fristående semesterperioder för B: sem ersätter fk om personen är ledig
+        for i, (sp_start, sp_slut) in enumerate(sp_parsed_b):
+            overlap = _wd_i_vecka(monday, sp_start, sp_slut)
+            take    = min(overlap, sp_kvar_b[i])
+            if take > 0:
+                sp_kvar_b[i] -= take
+                s_b          += take
+                fk_b          = max(0, fk_b - take)
 
         veckor.append({
             "vecka":      int(iso[1]),
@@ -417,7 +453,12 @@ def berakna(indata: Indata):
     nettolön_mån_b = berakna_skatt(lon_b, ki_b, kyrkoavg_b)["nettolön/mån"]
 
     # ── Veckoplan ─────────────────────────────────────────────
-    veckor = _generera_plan_veckor(indata.foraldrar_a.perioder, indata.foraldrar_b.perioder)
+    veckor = _generera_plan_veckor(
+        indata.foraldrar_a.perioder,
+        indata.foraldrar_b.perioder,
+        indata.foraldrar_a.semester_perioder,
+        indata.foraldrar_b.semester_perioder,
+    )
     if not veckor:
         return {"plan_veckor": [], "manadsinkomst_a": [], "manadsinkomst_b": [], "skatteavdrag": {}}
 
