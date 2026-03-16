@@ -103,6 +103,7 @@ class ForaldrarIndata(BaseModel):
     tio_dagar_start: Optional[str] = Field(None, description="Startdatum för 10-dagarna (YYYY-MM-DD)")
     tio_dagar_antal: int = Field(0, ge=0, le=10, description="Antal tio-dagar som ska tas ut (max 10)")
     sjukskrivningar: List[Sjukskrivning] = Field(default_factory=list, description="Sjukskrivningsperioder")
+    fast_belopp: float = Field(0.0, ge=0.0, description="Fast månatlig föräldralön (kr) när kollektivavtal='Ange föräldralön själv'")
 
 
 class Indata(BaseModel):
@@ -162,6 +163,16 @@ def _avtal_for_calc(f: ForaldrarIndata) -> Union[str, dict]:
         if f.avtal.fast_belopp > 0:
             result["fast_belopp"] = f.avtal.fast_belopp
         return result
+    # "Ange föräldralön själv": fast_belopp ligger på ForaldrarIndata-nivå
+    if f.avtal == "Ange föräldralön själv":
+        return {
+            "procent_under_tak": 0.10,
+            "procent_over_tak":  0.90,
+            "loenetak":          49333,
+            "max_manader":       18,   # täcker typiska föräldraledigheter
+            "krav_manader":      0,    # inget krav – användaren anger beloppet explicit
+            "fast_belopp":       f.fast_belopp,
+        }
     return f.avtal  # kollektivavtalsnamn, t.ex. "Unionen"
 
 
