@@ -65,9 +65,9 @@ class AnpassatAvtal(BaseModel):
 
 class SemesterPeriod(BaseModel):
     """En fristående semesterperiod."""
-    start: str   # "YYYY-MM-DD"
-    slut: str    # "YYYY-MM-DD"
-    dagar: int   # antal semesterdagar (arbetsdagar)
+    start: str            # "YYYY-MM-DD"
+    slut: Optional[str] = None  # "YYYY-MM-DD"; beräknas från start+dagar om utelämnat
+    dagar: int            # antal semesterdagar (arbetsdagar)
 
 
 class Sjukskrivning(BaseModel):
@@ -251,8 +251,14 @@ def _generera_plan_veckor(
     # Parsa fristående semesterperioder till date-objekt och tracka kvarvarande dagar
     _sp_a = semester_perioder_a or []
     _sp_b = semester_perioder_b or []
-    sp_parsed_a = [(date.fromisoformat(sp.start), date.fromisoformat(sp.slut)) for sp in _sp_a]
-    sp_parsed_b = [(date.fromisoformat(sp.start), date.fromisoformat(sp.slut)) for sp in _sp_b]
+    def _sp_slut(sp) -> date:
+        """Returnerar slutdatum för semesterperiod. Om slut saknas: start + ceil(dagar×7/5) dagar."""
+        if sp.slut:
+            return date.fromisoformat(sp.slut)
+        return date.fromisoformat(sp.start) + timedelta(days=max(sp.dagar * 7 // 5 + 7, 14))
+
+    sp_parsed_a = [(date.fromisoformat(sp.start), _sp_slut(sp)) for sp in _sp_a]
+    sp_parsed_b = [(date.fromisoformat(sp.start), _sp_slut(sp)) for sp in _sp_b]
     sp_kvar_a   = [sp.dagar for sp in _sp_a]
     sp_kvar_b   = [sp.dagar for sp in _sp_b]
 
