@@ -482,6 +482,40 @@ def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
     karens_brutto = lon * 0.20 / 5
     karens_netto  = karens_brutto * (1 - ki)
 
+    # Snabbväg: ren arbetsmånad – ingen ledighet, FK, LG, semester, tio-dagar
+    # eller sjukskrivning i någon vecka som täcker denna månad.
+    # Returnera full nettolön_mån direkt för att eliminera /wd-variation.
+    har_special = False
+    for i in range(len(veckor)):
+        if not any(
+            (veckor[i]["datum_start"] + timedelta(days=d)).year == ar
+            and (veckor[i]["datum_start"] + timedelta(days=d)).month == man
+            for d in range(5)
+        ):
+            continue
+        if (bool(veckor[i][col_ledig])
+                or int(df.iloc[i][col_fk])       > 0
+                or int(df.iloc[i][col_lg])       > 0
+                or int(df.iloc[i][col_sem])      > 0
+                or int(df.iloc[i][col_tio])      > 0
+                or int(df.iloc[i][col_sjuk_lon]) > 0
+                or int(df.iloc[i][col_sjuk_fk])  > 0
+                or int(df.iloc[i][col_sjuk_lag]) > 0):
+            har_special = True
+            break
+    if not har_special:
+        return {
+            "lon_netto":   nettolön_mån,
+            "sem_netto":   0,
+            "fk_netto":    0,
+            "fl_netto":    0,
+            "tio_netto":   0,
+            "sjuk_netto":  0,
+            "bb":          barnbidrag,
+            "skatt":       round(lon - nettolön_mån),
+            "netto_total": nettolön_mån + barnbidrag,
+        }
+
     lon_n = lon_b = sem_b = 0.0
     fk_n = fk_b = fl_n = fl_b = sem_n = tio_n = tio_b_sum = sjuk_n = sjuk_b_sum = 0.0
     for i in range(len(veckor)):
