@@ -148,23 +148,39 @@ def _get_ki(kommunalskatt_pct: float, kyrka: bool, forsamling: str) -> float:
     return kommunalskatt_pct / 100
 
 
+# ASCII-alias för svenska strängar som frontends utan unicode kan skicka
+_AVTAL_ALIAS: Dict[str, str] = {
+    "Ingen foraldralon":        "Ingen föräldralön",
+    "Ange foraldraelon sjaelv": "Ange föräldralön själv",
+    "Ange foraldralon sjalv":   "Ange föräldralön själv",
+}
+
+
+def _normalisera_avtal(avtal) -> object:
+    """Returnerar avtalet med svenska tecken om ett ASCII-alias matchar."""
+    if isinstance(avtal, str):
+        return _AVTAL_ALIAS.get(avtal, avtal)
+    return avtal
+
+
 def _avtal_for_calc(f: ForaldrarIndata) -> Union[str, dict]:
     """Konverterar Pydantic-avtalet till vad berakna_foraldralon förväntar sig."""
-    if f.avtal == "Ingen föräldralön":
+    avtal = _normalisera_avtal(f.avtal)
+    if avtal == "Ingen föräldralön":
         return "Ingen föräldralön"
-    if isinstance(f.avtal, AnpassatAvtal):
+    if isinstance(avtal, AnpassatAvtal):
         result: Dict[str, Any] = {
-            "procent_under_tak": f.avtal.procent_under_tak,
-            "procent_over_tak":  f.avtal.procent_over_tak,
-            "loenetak":          f.avtal.loenetak,
-            "max_manader":       f.avtal.max_manader,
-            "krav_manader":      f.avtal.krav_manader,
+            "procent_under_tak": avtal.procent_under_tak,
+            "procent_over_tak":  avtal.procent_over_tak,
+            "loenetak":          avtal.loenetak,
+            "max_manader":       avtal.max_manader,
+            "krav_manader":      avtal.krav_manader,
         }
-        if f.avtal.fast_belopp > 0:
-            result["fast_belopp"] = f.avtal.fast_belopp
+        if avtal.fast_belopp > 0:
+            result["fast_belopp"] = avtal.fast_belopp
         return result
     # "Ange föräldralön själv": fast_belopp ligger på ForaldrarIndata-nivå
-    if f.avtal == "Ange föräldralön själv":
+    if avtal == "Ange föräldralön själv":
         return {
             "procent_under_tak": 0.10,
             "procent_over_tak":  0.90,
@@ -173,7 +189,7 @@ def _avtal_for_calc(f: ForaldrarIndata) -> Union[str, dict]:
             "krav_manader":      0,    # inget krav – användaren anger beloppet explicit
             "fast_belopp":       f.fast_belopp,
         }
-    return f.avtal  # kollektivavtalsnamn, t.ex. "Unionen"
+    return avtal  # kollektivavtalsnamn, t.ex. "Unionen"
 
 
 # ── Portad från app.py: _wd_i_vecka ──────────────────────────
@@ -664,7 +680,15 @@ def berakna(indata: Indata):
 
     # ── Månadsberäkning ───────────────────────────────────────
     bb_mån = round(1250 * indata.antal_barn / 2)
-    y0, m0 = veckor[0]["datum_start"].year, veckor[0]["datum_start"].month
+    # Basera y0/m0 på faktiska startdatum för perioder/sjukskrivningar, inte
+    # veckoplaneringsveckans måndag (som kan ligga månaden INNAN ledigheten börjar
+    # och ge månaden felaktig partiell täckning istället för normal inkomst).
+    _event_starts: List[date] = (
+        [p.start for p in indata.foraldrar_a.perioder + indata.foraldrar_b.perioder]
+        + [date.fromisoformat(s.start) for s in indata.foraldrar_a.sjukskrivningar + indata.foraldrar_b.sjukskrivningar]
+    )
+    _first_event = min(_event_starts) if _event_starts else veckor[0]["datum_start"]
+    y0, m0 = _first_event.year, _first_event.month
     # Sista månaden = sista datum bland perioder OCH sjukskrivningar
     _all_period_ends = [p.slut for p in indata.foraldrar_a.perioder + indata.foraldrar_b.perioder]
     _all_sjuk_ends   = [date.fromisoformat(s.slut)
