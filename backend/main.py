@@ -714,8 +714,28 @@ def berakna(indata: Indata):
 
     df = _DF(veckor)
 
+    # ── Barnbidrag ────────────────────────────────────────────
+    def _bb_total(n: int) -> int:
+        """Totalt barnbidrag + flerbarnstillägg för n barn (2025/2026).
+        n=1 → 1 250, n=2 → 2 650, n≥3 → 2 650 + (n-2)×1 250.
+        """
+        if n <= 0:
+            return 0
+        if n == 1:
+            return 1250
+        if n == 2:
+            return 2650
+        return 2650 + (n - 2) * 1250
+
+    # antal_barn = totalt antal barn i familjen (1 = enbart det planerade barnet).
+    # bb_mån      = per förälder (halva totalen) under/efter ledigheten.
+    # bb_fore     = per förälder innan det planerade barnet föds;
+    #               eventuella syskon är redan födda → deras bb gäller från dag 1.
+    n_barn   = max(1, indata.antal_barn)   # minst 1 (det planerade barnet)
+    bb_mån   = round(_bb_total(n_barn)     / 2)
+    bb_fore  = round(_bb_total(n_barn - 1) / 2)  # 0 om n_barn==1 (inga syskon)
+
     # ── Månadsberäkning ───────────────────────────────────────
-    bb_mån = round(1250 * indata.antal_barn / 2)
     # Basera y0/m0 på faktiska startdatum för perioder/sjukskrivningar, inte
     # veckoplaneringsveckans måndag (som kan ligga månaden INNAN ledigheten börjar
     # och ge månaden felaktig partiell täckning istället för normal inkomst).
@@ -780,8 +800,8 @@ def berakna(indata: Indata):
     skatt_a = berakna_skatt(lon_a, ki_a, kyrkoavg_a)["total_skatt/mån"]
     skatt_b = berakna_skatt(lon_b, ki_b, kyrkoavg_b)["total_skatt/mån"]
 
-    fore_a  = [_normalmanad(*_add_months(y0, m0, i - 6), nettolön_mån_a, skatt_a, 0) for i in range(6)]
-    fore_b  = [_normalmanad(*_add_months(y0, m0, i - 6), nettolön_mån_b, skatt_b, 0) for i in range(6)]
+    fore_a  = [_normalmanad(*_add_months(y0, m0, i - 6), nettolön_mån_a, skatt_a, bb_fore) for i in range(6)]
+    fore_b  = [_normalmanad(*_add_months(y0, m0, i - 6), nettolön_mån_b, skatt_b, bb_fore) for i in range(6)]
     efter_a = [_normalmanad(*_add_months(y1, m1, i + 1), nettolön_mån_a, skatt_a, bb_mån) for i in range(6)]
     efter_b = [_normalmanad(*_add_months(y1, m1, i + 1), nettolön_mån_b, skatt_b, bb_mån) for i in range(6)]
 
