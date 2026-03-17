@@ -438,16 +438,17 @@ class _DF:
 
 # ── Portad från app.py: _komponenter_manad ───────────────────
 
-def _komponenter_manad(ar, man, veckor, df, lon, ki,
+def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
                        fl_r, fl_bool,
                        col_fk, col_lg, col_sem, col_tio,
                        col_sjuk_lon, col_sjuk_fk, col_sjuk_lag, col_sjuk_grad, col_sjuk_karens,
                        col_ledig, barnbidrag):
     """Beräknar en månads inkomstkomponenter för en förälder givet veckoplan.
 
-    Dagslön baseras på fast /21 (sammalöneregeln), vilket ger konsistens med
-    sjuklöneformeln (manadslon * 0.80 / 21) och garanterar att lon_netto > 0
-    för varje dag med närvaro eller sjuklön dag 1-14.
+    netto_dag = nettolön_mån / 21 inkluderar progressiv statlig inkomstskatt,
+    vilket ger korrekt nettolön även för höginkomsttagare.
+    Sjuklön/FK/FL använder kommunalskattefaktorn (1-ki) separat, då dessa
+    ersättningar normalt understiger statsskattegränsen.
     """
     fk_r = berakna_fk_ersattning(lon, ki)
     # Räkna faktiska arbetsdagar i månaden – används för föräldralön per dag
@@ -457,8 +458,9 @@ def _komponenter_manad(ar, man, veckor, df, lon, ki,
         if _d.weekday() < 5:
             wd_i_man += 1
         _d += timedelta(days=1)
-    # Fast dagslön /21 (sammalöneregeln) – konsekvent med sjuklön och semesterersättning
-    netto_dag  = lon / 21 * (1 - ki)
+    # Dagslön baserad på nettolön_mån/21 – inkluderar statlig skatt för höginkomsttagare.
+    # brutto_dag används för skatteberäkning (total_b - total_n = faktisk skatt).
+    netto_dag  = nettolön_mån / 21
     brutto_dag = lon / 21
     fk_ndag = fk_r["fk_netto/dag"]
     fk_bdag = fk_r["fk_brutto/dag"]
@@ -708,11 +710,11 @@ def berakna(indata: Indata):
     komp_a: List[dict] = []
     komp_b: List[dict] = []
     for ar, man in months_list:
-        ka = _komponenter_manad(ar, man, veckor, df, lon_a, ki_a,
+        ka = _komponenter_manad(ar, man, veckor, df, lon_a, nettolön_mån_a, ki_a,
                                 fl_r_a, fl_a, "fk_a", "lg_a", "sem_a", "tio_a",
                                 "sjuk_lon_a", "sjuk_fk_a", "sjuk_lag_a", "sjuk_grad_a", "sjuk_karens_a",
                                 "ledig_a", bb_mån)
-        kb = _komponenter_manad(ar, man, veckor, df, lon_b, ki_b,
+        kb = _komponenter_manad(ar, man, veckor, df, lon_b, nettolön_mån_b, ki_b,
                                 fl_r_b, fl_b, "fk_b", "lg_b", "sem_b", "tio_b",
                                 "sjuk_lon_b", "sjuk_fk_b", "sjuk_lag_b", "sjuk_grad_b", "sjuk_karens_b",
                                 "ledig_b", bb_mån)
