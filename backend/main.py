@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from kalkyl import berakna_skatt, berakna_fk_ersattning, berakna_foraldralon, berakna_ranteavdrag
 from skattesatser import KOMMUNALSKATT_2026, KYRKOAVGIFT_2026, kommunkod_till_namn
-from kollektivavtal import KOLLEKTIVAVTAL  # noqa: F401 – tillgänglig för informationsändamål
+from kollektivavtal import KOLLEKTIVAVTAL, max_fl_man, FL_FINANSFORBUNDET_MAX_DAGAR  # noqa: F401
 
 # ── FastAPI-app ────────────────────────────────────────────────
 app = FastAPI(
@@ -104,6 +104,7 @@ class ForaldrarIndata(BaseModel):
     tio_dagar_antal: int = Field(0, ge=0, le=10, description="Antal tio-dagar som ska tas ut (max 10)")
     sjukskrivningar: List[Sjukskrivning] = Field(default_factory=list, description="Sjukskrivningsperioder")
     fast_belopp: float = Field(0.0, ge=0.0, description="Fast månatlig föräldralön (kr) när kollektivavtal='Ange föräldralön själv'")
+    anstallningstid_manader: Optional[int] = Field(None, ge=0, description="Anställningstid i månader (None = okänd → generöst default, dvs max FL-månader)")
 
 
 class Indata(BaseModel):
@@ -436,6 +437,23 @@ class _DF:
         return _Iloc()
 
 
+# ── Hjälpfunktion: FK-dagar per månad (Finansförbundet) ──────
+
+def _fk_dagar_manad(ar: int, man: int, veckor: List[dict], col_fk: str) -> float:
+    """Summerar FK-dagar (max 5 per vecka) som faller i given månad.
+    Används för att spåra FL-förbrukning i dagar för Finansförbundet."""
+    total = 0.0
+    for v in veckor:
+        n = sum(
+            1 for d in range(5)
+            if (v["datum_start"] + timedelta(days=d)).year == ar
+            and (v["datum_start"] + timedelta(days=d)).month == man
+        )
+        if n > 0:
+            total += min(int(v[col_fk]), 5) * (n / 5)
+    return total
+
+
 # ── Portad från app.py: _komponenter_manad ───────────────────
 
 def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
@@ -761,17 +779,62 @@ def berakna(indata: Indata):
             m, y = 1, y + 1
 
     MAN = ["Jan","Feb","Mar","Apr","Maj","Jun","Jul","Aug","Sep","Okt","Nov","Dec"]
+
+    # ── FL-kapacitet per förälder ──────────────────────────────
+    # avtal_namn_x = det normaliserade avtalsnamnet (sträng) eller "AnpassatAvtal"
+    _anst_a = indata.foraldrar_a.anstallningstid_manader
+    _anst_b = indata.foraldrar_b.anstallningstid_manader
+    _avtal_namn_a = (
+        _normalisera_avtal(indata.foraldrar_a.avtal)
+        if isinstance(indata.foraldrar_a.avtal, str)
+        else "AnpassatAvtal"
+    )
+    _avtal_namn_b = (
+        _normalisera_avtal(indata.foraldrar_b.avtal)
+        if isinstance(indata.foraldrar_b.avtal, str)
+        else "AnpassatAvtal"
+    )
+    max_fl_man_a = max_fl_man(_avtal_namn_a, _anst_a)
+    max_fl_man_b = max_fl_man(_avtal_namn_b, _anst_b)
+    is_fin_a = _avtal_namn_a == "Finansförbundet"
+    is_fin_b = _avtal_namn_b == "Finansförbundet"
+    fl_man_a = 0    # månader där fl_netto > 0
+    fl_man_b = 0
+    fl_dag_a = 0.0  # FK-dagar med FL (Finansförbundet)
+    fl_dag_b = 0.0
+
     komp_a: List[dict] = []
     komp_b: List[dict] = []
     for ar, man in months_list:
+        # FL aktiv denna månad? (ny cap kombineras med befintlig fl_bool)
+        if is_fin_a:
+            fl_active_a = fl_a and max_fl_man_a > 0 and fl_dag_a < FL_FINANSFORBUNDET_MAX_DAGAR
+        else:
+            fl_active_a = fl_a and (max_fl_man_a == 999 or fl_man_a < max_fl_man_a)
+        if is_fin_b:
+            fl_active_b = fl_b and max_fl_man_b > 0 and fl_dag_b < FL_FINANSFORBUNDET_MAX_DAGAR
+        else:
+            fl_active_b = fl_b and (max_fl_man_b == 999 or fl_man_b < max_fl_man_b)
+
         ka = _komponenter_manad(ar, man, veckor, df, lon_a, nettolön_mån_a, ki_a,
-                                fl_r_a, fl_a, "fk_a", "lg_a", "sem_a", "tio_a",
+                                fl_r_a, fl_active_a, "fk_a", "lg_a", "sem_a", "tio_a",
                                 "sjuk_lon_a", "sjuk_fk_a", "sjuk_lag_a", "sjuk_grad_a", "sjuk_karens_a",
                                 "ledig_a", bb_mån)
         kb = _komponenter_manad(ar, man, veckor, df, lon_b, nettolön_mån_b, ki_b,
-                                fl_r_b, fl_b, "fk_b", "lg_b", "sem_b", "tio_b",
+                                fl_r_b, fl_active_b, "fk_b", "lg_b", "sem_b", "tio_b",
                                 "sjuk_lon_b", "sjuk_fk_b", "sjuk_lag_b", "sjuk_grad_b", "sjuk_karens_b",
                                 "ledig_b", bb_mån)
+
+        # Uppdatera FL-räknare
+        if ka["fl_netto"] > 0:
+            fl_man_a += 1
+            if is_fin_a:
+                fl_dag_a += _fk_dagar_manad(ar, man, veckor, "fk_a")
+        if kb["fl_netto"] > 0:
+            fl_man_b += 1
+            if is_fin_b:
+                fl_dag_b += _fk_dagar_manad(ar, man, veckor, "fk_b")
+
         komp_a.append({"ar": ar, "man": man, "manad": f"{MAN[man-1]} {ar}", **ka})
         komp_b.append({"ar": ar, "man": man, "manad": f"{MAN[man-1]} {ar}", **kb})
 
@@ -894,10 +957,25 @@ def berakna(indata: Indata):
         },
     }
 
+    # ── FL-saldo ──────────────────────────────────────────────
+    fl_saldo = {
+        "a": {
+            "fl_manader_totalt":  max_fl_man_a,
+            "fl_manader_anvanda": fl_man_a,
+            "fl_manader_kvar":    max(0, max_fl_man_a - fl_man_a) if max_fl_man_a < 999 else 999,
+        },
+        "b": {
+            "fl_manader_totalt":  max_fl_man_b,
+            "fl_manader_anvanda": fl_man_b,
+            "fl_manader_kvar":    max(0, max_fl_man_b - fl_man_b) if max_fl_man_b < 999 else 999,
+        },
+    }
+
     return {
         "plan_veckor":     plan_veckor,
         "manadsinkomst_a": komp_a,
         "manadsinkomst_b": komp_b,
         "skatteavdrag":    skatteavdrag,
         "dagssaldo":       dagssaldo,
+        "fl_saldo":        fl_saldo,
     }
