@@ -69,7 +69,7 @@ KOLLEKTIVAVTAL = {
         "max_manader_kort": 3,
         "max_manader_lang": 6,
         "krav_kort_manader": 12,  # A-02: var felaktigt 9 — Unionen kräver 12 mån sammanhängande
-        "krav_lang_manader": 12,
+        "krav_lang_manader": 24,  # fix: 12–23 mån → 3 FL-mån (kort), 24+ mån → 6 FL-mån (lång)
         "fl_10_dagar": False,
         "tio_dagar_avdrag": "timme",
     },
