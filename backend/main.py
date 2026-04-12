@@ -114,6 +114,7 @@ class Indata(BaseModel):
     foraldrar_a: ForaldrarIndata
     foraldrar_b: ForaldrarIndata
     antal_barn: int = Field(0, ge=0, description="Antal barn utöver det planerade (0 = ett barn)")
+    antal_foster: int = Field(1, ge=1, le=4, description="Antal foster vid denna graviditet (1=singel, 2=tvillingar)")
     sparade_sgi_a: int = Field(0, ge=0, le=195, description="Sparade SGI-dagar förälder A")
     sparade_sgi_b: int = Field(0, ge=0, le=195, description="Sparade SGI-dagar förälder B")
     sparade_lagsta_a: int = Field(0, ge=0, le=45, description="Sparade lägstanivådagar förälder A")
@@ -827,11 +828,15 @@ def berakna(indata: Indata):
 
         # Uppdatera FL-räknare
         if ka["fl_netto"] > 0:
-            fl_man_a += 1
+            # B-04: Proportionell räkning – partialmånad bränner inte en hel FL-månad
+            fk_dagar_a = _fk_dagar_manad(ar, man, veckor, "fk_a")
+            fl_man_a += min(1.0, fk_dagar_a / 20)
             if is_fin_a:
                 fl_dag_a += _fk_dagar_manad(ar, man, veckor, "fk_a")
         if kb["fl_netto"] > 0:
-            fl_man_b += 1
+            # B-04: Proportionell räkning
+            fk_dagar_b = _fk_dagar_manad(ar, man, veckor, "fk_b")
+            fl_man_b += min(1.0, fk_dagar_b / 20)
             if is_fin_b:
                 fl_dag_b += _fk_dagar_manad(ar, man, veckor, "fk_b")
 
@@ -933,10 +938,12 @@ def berakna(indata: Indata):
     lg_anvanda_a = sum(v["lg_a"] for v in veckor)
     sp_anvanda_b = sum(v["fk_b"] for v in veckor)
     lg_anvanda_b = sum(v["lg_b"] for v in veckor)
-    sp_tot_a = indata.sparade_sgi_a + 195
-    lg_tot_a = indata.sparade_lagsta_a + 45
-    sp_tot_b = indata.sparade_sgi_b + 195
-    lg_tot_b = indata.sparade_lagsta_b + 45
+    # C-05: Tvillingfödsel – extra 90 SP + 45 LG per extra foster (SFB 12 kap 42 §)
+    _extra = max(0, indata.antal_foster - 1)
+    sp_tot_a = indata.sparade_sgi_a + 195 + _extra * 90
+    lg_tot_a = indata.sparade_lagsta_a + 45 + _extra * 45
+    sp_tot_b = indata.sparade_sgi_b + 195 + _extra * 90
+    lg_tot_b = indata.sparade_lagsta_b + 45 + _extra * 45
 
     dagssaldo = {
         "a": {
@@ -971,6 +978,40 @@ def berakna(indata: Indata):
         },
     }
 
+    # C-07: 3-periodersvarning (Föräldraledighetslagen 10 §, max 3 perioder per kalenderår)
+    perioder_per_ar_a: dict = {}
+    perioder_per_ar_b: dict = {}
+    for p in indata.foraldrar_a.perioder:
+        for ar_p in range(p.start.year, p.slut.year + 1):
+            perioder_per_ar_a[ar_p] = perioder_per_ar_a.get(ar_p, 0) + 1
+    for p in indata.foraldrar_b.perioder:
+        for ar_p in range(p.start.year, p.slut.year + 1):
+            perioder_per_ar_b[ar_p] = perioder_per_ar_b.get(ar_p, 0) + 1
+    tre_perioder_varningar = []
+    for ar_p, antal in {**perioder_per_ar_a, **{k: v for k, v in perioder_per_ar_b.items()}}.items():
+        for forälder_namn, d in [(indata.foraldrar_a.namn, perioder_per_ar_a), (indata.foraldrar_b.namn, perioder_per_ar_b)]:
+            if d.get(ar_p, 0) > 3:
+                tre_perioder_varningar.append({
+                    "typ": "tre_perioder",
+                    "forälder": forälder_namn,
+                    "ar": ar_p,
+                    "antal_perioder": d[ar_p],
+                    "meddelande": f"{forälder_namn} har {d[ar_p]} ledighetsperioder år {ar_p}. FL-lagen ger rätt till max 3/år — stäm av med arbetsgivaren.",
+                })
+
+    # C-06: FK helgkopplingsvarning (lag fr.o.m. 1 april 2025, SFB 12 kap 14 a §)
+    helgkoppling_varningar = []
+    for v in veckor:
+        for col, namn in [("fk_a", indata.foraldrar_a.namn), ("fk_b", indata.foraldrar_b.namn)]:
+            if v[col] > 5 and min(v[col], 5) == 0:
+                helgkoppling_varningar.append({
+                    "typ": "fk_helgkoppling",
+                    "forälder": namn,
+                    "vecka": v["vecka"],
+                    "ar": v["ar"],
+                    "meddelande": f"{namn} har helg-FK v.{v['vecka']}/{v['ar']} utan vardags-FK. FK på helg kräver FK på vardag samma vecka (april 2025).",
+                })
+
     return {
         "plan_veckor":     plan_veckor,
         "manadsinkomst_a": komp_a,
@@ -978,4 +1019,6 @@ def berakna(indata: Indata):
         "skatteavdrag":    skatteavdrag,
         "dagssaldo":       dagssaldo,
         "fl_saldo":        fl_saldo,
+        "varningar_perioder": tre_perioder_varningar,
+        "varningar_helg": helgkoppling_varningar,
     }
