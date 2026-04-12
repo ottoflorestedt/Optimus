@@ -487,9 +487,12 @@ def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
     lg_bdag = 180
     fl_ndag = (fl_r["foraldralon/mån"] * (1 - ki) / wd_i_man) if (fl_bool and fl_r["max_månader"] > 0 and wd_i_man) else 0
     fl_bdag = (fl_r["foraldralon/mån"] / wd_i_man) if (fl_bool and fl_r["max_månader"] > 0 and wd_i_man) else 0
-    # 10-dagar: timlöneavdrag = lon/21 per dag (brutto)
-    tio_avdrag_n = (lon / 21) * (1 - ki)  # netto löneavdrag per tio-dag
-    tio_avdrag_b = lon / 21               # brutto löneavdrag per tio-dag
+    # A-05: TFP SGI-tak = 7.5 PBB 2026 = 444 000 kr (SFB 13 kap 22 §)
+    sgi_tfp = min(lon * 12, 444_000)
+    tfp_brutto_dag = sgi_tfp * 0.776 / 365
+    tfp_netto_dag  = tfp_brutto_dag * (1 - ki)
+    tio_avdrag_n = (lon / 21) * (1 - ki)
+    tio_avdrag_b = lon / 21
     # Sjuk FK-sjukpenning: SGI * 0.64 / 365 (= 80% av 80% av SGI/365)
     sgi          = min(lon * 12, 592_000)
     fk_sp_brutto = sgi * 0.64 / 365
@@ -569,8 +572,9 @@ def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
             fl_b += fl_bdag * fk_wd * frac
         # 10-dagar: partiell lön (netto_dag - avdrag) + FK, ingen FL
         if tio > 0:
-            tio_n     += (netto_dag  - tio_avdrag_n + fk_ndag) * tio * frac
-            tio_b_sum += (brutto_dag - tio_avdrag_b + fk_bdag) * tio * frac
+            # A-05: Använd TFP-ersättning (7.5 PBB-tak) för 10-dagarna
+            tio_n     += (netto_dag  - tio_avdrag_n + tfp_netto_dag) * tio * frac
+            tio_b_sum += (brutto_dag - tio_avdrag_b + (sgi_tfp * 0.776 / 365)) * tio * frac
         # Fas 1 – sjuklön (dag 1-14): arbetsgivaren betalar 80% av lön.
         # Sjuklönen ÄR lön → bidrar till lon_n, inte sjuk_n.
         if sk_lon > 0:
