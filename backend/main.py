@@ -4,6 +4,7 @@ Föräldrakalkylator – FastAPI backend.
 Exponerar kalkyllogiken från kalkyl.py som ett REST-API.
 Planerings- och månadsberäkningsfunktionerna är portade från app.py (utan Streamlit-beroenden).
 """
+import calendar as _cal
 from datetime import date, timedelta
 from typing import List, Optional, Union, Dict, Any
 
@@ -208,6 +209,79 @@ def _wd_i_vecka(monday: date, period_start, period_end) -> int:
     return sum(1 for i in range((e - s).days + 1) if (s + timedelta(days=i)).weekday() < 5)
 
 
+# ── B-01: Kalenderdagsavdrag vs dagsavdrag ────────────────────
+
+def _period_sammanhangande_wd(p_start: date, p_slut: date) -> int:
+    """Räknar arbetsdagar (mån-fre) i perioden [p_start, p_slut]."""
+    count = 0
+    d = p_start
+    while d <= p_slut:
+        if d.weekday() < 5:
+            count += 1
+        d += timedelta(days=1)
+    return count
+
+
+def _bygg_atyp_karta(perioder: List["Period"]) -> List[tuple]:
+    """
+    Bygger en lista av (start, slut, avdragstyp)-segment för en förälders perioder.
+
+    Regler:
+      - fk_v < 5 (deltidsledig): alltid "dag" (bryts varje vecka)
+      - Semesterperiod bryter kedjan; del-segmenten bedöms separat.
+      - Sammanhängande wd > 5 och fk_v >= 5 → "kalender", annars "dag".
+    """
+    segments: List[tuple] = []
+    for p in perioder:
+        if p.fk_v < 5:
+            segments.append((p.start, p.slut, "dag"))
+            continue
+        if p.sem_start and p.sem_slut and p.sem_dagar > 0:
+            # Segment före semester
+            seg1_slut = p.sem_start - timedelta(days=1)
+            if seg1_slut >= p.start:
+                wd1 = _period_sammanhangande_wd(p.start, seg1_slut)
+                segments.append((p.start, seg1_slut, "kalender" if wd1 > 5 else "dag"))
+            # Semesterdagarna räknas inte som FK-avdrag – hoppas över
+            # Segment efter semester
+            seg2_start = p.sem_slut + timedelta(days=1)
+            if seg2_start <= p.slut:
+                wd2 = _period_sammanhangande_wd(seg2_start, p.slut)
+                segments.append((seg2_start, p.slut, "kalender" if wd2 > 5 else "dag"))
+        else:
+            wd = _period_sammanhangande_wd(p.start, p.slut)
+            segments.append((p.start, p.slut, "kalender" if wd > 5 else "dag"))
+    return segments
+
+
+def _atyp_for_week(monday: date, karta: List[tuple]) -> str:
+    """Returnerar avdragstyp ('dag'/'kalender') för veckan startad på monday."""
+    friday = monday + timedelta(days=4)
+    for seg_start, seg_slut, atyp in karta:
+        if monday <= seg_slut and friday >= seg_start:
+            return atyp
+    return "dag"
+
+
+def _kal_days_i_manad(ar: int, man: int, atyp_karta: List[tuple]) -> int:
+    """
+    Summerar faktiska kalenderdagar i 'kalender'-segment som faller i given månad.
+    Inkluderar helger – korrekt för perioder som börjar/slutar på helg (t.ex. T6).
+    """
+    last_dom = _cal.monthrange(ar, man)[1]
+    first = date(ar, man, 1)
+    last  = date(ar, man, last_dom)
+    total = 0
+    for seg_start, seg_slut, atyp in atyp_karta:
+        if atyp != "kalender":
+            continue
+        d = max(seg_start, first)
+        e = min(seg_slut, last)
+        if d <= e:
+            total += (e - d).days + 1
+    return total
+
+
 # ── Portad från app.py: generera_plan_veckor ─────────────────
 
 def _sjuk_faser(wd_start: int, wd_end: int):
@@ -285,6 +359,10 @@ def _generera_plan_veckor(
     tio_slut_b = (tio_start_b + timedelta(days=59)) if tio_start_b else None
     tio_kvar_a = tio_antal_a
     tio_kvar_b = tio_antal_b
+
+    # B-01: Bygg avdragstyp-karta en gång per period (inte per vecka)
+    atyp_karta_a = _bygg_atyp_karta(perioder_a)
+    atyp_karta_b = _bygg_atyp_karta(perioder_b)
 
     veckor: List[dict] = []
 
@@ -403,6 +481,7 @@ def _generera_plan_veckor(
             "sjuk_grad_a":    int(sjuk_grad_a_v),
             "sjuk_karens_a":  sjuk_karens_a,
             "ledig_a":        ledig_a,
+            "avdragstyp_a":   _atyp_for_week(monday, atyp_karta_a),  # B-01
             "fk_b":           int(fk_b),
             "lg_b":           0,
             "sem_b":          int(s_b),
@@ -413,6 +492,7 @@ def _generera_plan_veckor(
             "sjuk_grad_b":    int(sjuk_grad_b_v),
             "sjuk_karens_b":  sjuk_karens_b,
             "ledig_b":        ledig_b,
+            "avdragstyp_b":   _atyp_for_week(monday, atyp_karta_b),  # B-01
         })
         monday += timedelta(weeks=1)
 
@@ -461,13 +541,18 @@ def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
                        fl_r, fl_bool,
                        col_fk, col_lg, col_sem, col_tio,
                        col_sjuk_lon, col_sjuk_fk, col_sjuk_lag, col_sjuk_grad, col_sjuk_karens,
-                       col_ledig, barnbidrag):
+                       col_ledig, barnbidrag,
+                       avdragstyp_col="avdragstyp_a",   # B-01
+                       atyp_karta=None):                 # B-01
     """Beräknar en månads inkomstkomponenter för en förälder givet veckoplan.
 
     netto_dag = nettolön_mån / 21 inkluderar progressiv statlig inkomstskatt,
     vilket ger korrekt nettolön även för höginkomsttagare.
     Sjuklön/FK/FL använder kommunalskattefaktorn (1-ki) separat, då dessa
     ersättningar normalt understiger statsskattegränsen.
+
+    B-01: atyp_karta styr om perioden beräknas med kalender- eller dagsavdrag.
+    Korrektionsformeln: lon_n += kal_fk_wd×netto_dag − kal_days×nettolön_mån×12/365.
     """
     fk_r = berakna_fk_ersattning(lon, ki)
     # Räkna faktiska arbetsdagar i månaden – används för föräldralön per dag
@@ -540,6 +625,9 @@ def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
 
     lon_n = lon_b = sem_b = 0.0
     fk_n = fk_b = fl_n = fl_b = sem_n = tio_n = tio_b_sum = sjuk_n = sjuk_b_sum = 0.0
+    # B-01: dag-avdragsackumulatorer för top-down lönberäkning
+    dag_fk_n = dag_fk_b = 0.0        # avdrag (netto/brutto) från dag-ledigatveckor
+    lon_sjuk_n = lon_sjuk_b = 0.0    # sjuklönsandel (separerat för top-down)
     for i in range(len(veckor)):
         fk  = int(df.iloc[i][col_fk])
         lg  = int(df.iloc[i][col_lg])
@@ -559,10 +647,27 @@ def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
         ledig      = bool(veckor[i][col_ledig])
         fk_wd      = min(fk, 5)
         total_sjuk = sk_lon + sk_fk + sk_lag
-        arb        = 0 if ledig else max(0, 5 - fk_wd - lg - sem - tio - total_sjuk)
+
+        # ── B-01: top-down lönberäkning ──────────────────────────────
+        # Beräknar lon_n top-down (nettolön_mån − dag-avdrag − kal-avdrag) i
+        # stället för bottom-up (arbetsdagar × netto_dag).
+        # Innebär att semesterveckor, gappveckor m.m. ingår korrekt i basen.
+        if atyp_karta is not None:
+            if ledig:
+                atyp = veckor[i].get(avdragstyp_col, "dag")
+                if atyp == "dag":
+                    # Dag-avdrag: avdraget = fk_wd × netto_dag (per vecka)
+                    dag_fk_n += fk_wd * netto_dag  * frac
+                    dag_fk_b += fk_wd * brutto_dag * frac
+                # kalender: avdrag beräknas efter loopen via _kal_days_i_manad
+        else:
+            # Bakåtkompatibelt bottom-up-läge (atyp_karta=None)
+            arb = 0 if ledig else max(0, 5 - fk_wd - lg - sem - tio - total_sjuk)
+            lon_n += arb * netto_dag  * frac
+            lon_b += arb * brutto_dag * frac
+        # ─────────────────────────────────────────────────────────────
+
         tillagg    = lon * 0.0043 * sem * frac
-        lon_n += arb * netto_dag  * frac
-        lon_b += arb * brutto_dag * frac
         sem_n += sem * netto_dag  * frac + tillagg
         sem_b += sem * brutto_dag * frac + tillagg
         fk_n  += (fk_ndag * fk_wd + lg_ndag * max(fk - 5, 0) + lg_ndag * lg) * frac
@@ -581,11 +686,19 @@ def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
             grad_f       = sk_grad / 100
             sjlon_b_dag  = grad_f * 0.80 * lon / 21
             sjlon_n_dag  = sjlon_b_dag * (1 - ki)
-            lon_n += sjlon_n_dag * sk_lon * frac
-            lon_b += sjlon_b_dag * sk_lon * frac
-            if sk_karens:
-                lon_n -= karens_netto  * frac
-                lon_b -= karens_brutto * frac
+            if atyp_karta is not None:
+                # Spara separat – kombineras med top-down lon_n efter loopen
+                lon_sjuk_n += sjlon_n_dag * sk_lon * frac
+                lon_sjuk_b += sjlon_b_dag * sk_lon * frac
+                if sk_karens:
+                    lon_sjuk_n -= karens_netto  * frac
+                    lon_sjuk_b -= karens_brutto * frac
+            else:
+                lon_n += sjlon_n_dag * sk_lon * frac
+                lon_b += sjlon_b_dag * sk_lon * frac
+                if sk_karens:
+                    lon_n -= karens_netto  * frac
+                    lon_b -= karens_brutto * frac
         # Fas 2 – FK sjukpenning (dag 15-90): FK + AG-tillägg om avtal
         if sk_fk > 0:
             sjuk_n     += fk_sp_netto  * sk_fk * frac
@@ -597,6 +710,15 @@ def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
         if sk_lag > 0:
             sjuk_n     += fk_sp_netto  * sk_lag * frac
             sjuk_b_sum += fk_sp_brutto * sk_lag * frac
+
+    # B-01: top-down löneberäkning efter loopen
+    # lon_n = max(0, nettolön_mån − dag-avdrag − kalender-avdrag) + sjuklönsdel
+    # Cap: avdrag får aldrig överstiga månadslönen (lon_n/lon_b ≥ 0).
+    if atyp_karta is not None:
+        kal_days   = _kal_days_i_manad(ar, man, atyp_karta)
+        lon_n = max(0.0, nettolön_mån - dag_fk_n - nettolön_mån * 12 / 365 * kal_days) + lon_sjuk_n
+        lon_b = max(0.0, lon          - dag_fk_b - lon          * 12 / 365 * kal_days) + lon_sjuk_b
+
     total_n = lon_n + fk_n + fl_n + sem_n + tio_n + sjuk_n + barnbidrag
     total_b = lon_b + fk_b + fl_b + sem_b + tio_b_sum + sjuk_b_sum + barnbidrag
     return {
@@ -808,6 +930,10 @@ def berakna(indata: Indata):
     fl_dag_a = 0.0  # FK-dagar med FL (Finansförbundet)
     fl_dag_b = 0.0
 
+    # B-01: bygg avdragstyp-kartor för kalender-avdrag-korrektion i _komponenter_manad
+    _atyp_karta_a = _bygg_atyp_karta(indata.foraldrar_a.perioder)
+    _atyp_karta_b = _bygg_atyp_karta(indata.foraldrar_b.perioder)
+
     komp_a: List[dict] = []
     komp_b: List[dict] = []
     for ar, man in months_list:
@@ -824,11 +950,13 @@ def berakna(indata: Indata):
         ka = _komponenter_manad(ar, man, veckor, df, lon_a, nettolön_mån_a, ki_a,
                                 fl_r_a, fl_active_a, "fk_a", "lg_a", "sem_a", "tio_a",
                                 "sjuk_lon_a", "sjuk_fk_a", "sjuk_lag_a", "sjuk_grad_a", "sjuk_karens_a",
-                                "ledig_a", bb_mån)
+                                "ledig_a", bb_mån,
+                                avdragstyp_col="avdragstyp_a", atyp_karta=_atyp_karta_a)
         kb = _komponenter_manad(ar, man, veckor, df, lon_b, nettolön_mån_b, ki_b,
                                 fl_r_b, fl_active_b, "fk_b", "lg_b", "sem_b", "tio_b",
                                 "sjuk_lon_b", "sjuk_fk_b", "sjuk_lag_b", "sjuk_grad_b", "sjuk_karens_b",
-                                "ledig_b", bb_mån)
+                                "ledig_b", bb_mån,
+                                avdragstyp_col="avdragstyp_b", atyp_karta=_atyp_karta_b)
 
         # Uppdatera FL-räknare
         if ka["fl_netto"] > 0:
