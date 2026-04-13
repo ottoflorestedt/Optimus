@@ -56,6 +56,21 @@ def max_fl_man(avtal_namn: str, anstallningstid: Optional[int]) -> int:
         # (Tidigare felaktigt: return 0 if mån < 12 else 12)
         return 0 if mån < 1 else 12
 
+    if avtal_namn in ("Byggföretagen (tjänstemän)",):
+        return 0 if mån < 12 else 6
+
+    if avtal_namn in ("Svensk Handel (tjänstemän)", "Almega IT/konsult", "Stål och metall (tjänstemän)"):
+        return 0 if mån < 12 else (2 if mån < 24 else 6)
+
+    if avtal_namn in ("Vårdförbundet (region)",):
+        # Steg-modell identisk med AB-avtalet
+        if mån < 12: return 0
+        if mån < 24: return 2
+        if mån < 36: return 3
+        if mån < 48: return 4
+        if mån < 60: return 5
+        return 6
+
     # Unionen, AB-avtalet, Statliga sektorn, Läkarförbundet, övriga
     # A-02: Unionen kräver 12 mån sammanhängande (KOLLEKTIVAVTAL["Unionen"]["krav_kort_manader"] = 12)
     return 0 if mån < 12 else (3 if mån < 24 else 6)
@@ -101,11 +116,14 @@ KOLLEKTIVAVTAL = {
     "Statliga sektorn": {
         "procent_under_tak": 0.10,
         "procent_over_tak": 0.90,
-        "loenetak": round(10 * PBB / 12),  # A-04
-        "max_manader_kort": 6,
-        "max_manader_lang": 12,
-        "krav_kort_manader": 12,
-        "krav_lang_manader": 12,
+        "loenetak": round(10 * PBB / 12),
+        "steg": [
+            {"krav_manader": 12, "max_manader": 2},
+            {"krav_manader": 24, "max_manader": 3},
+            {"krav_manader": 36, "max_manader": 4},
+            {"krav_manader": 48, "max_manader": 5},
+            {"krav_manader": 60, "max_manader": 6},
+        ],
         "fl_10_dagar": False,
         "tio_dagar_avdrag": "timme",
     },
@@ -145,4 +163,75 @@ KOLLEKTIVAVTAL = {
         "fl_10_dagar": False,
         "tio_dagar_avdrag": "timme",
     },
+    "Byggföretagen (tjänstemän)": {
+        # Källa: Sveriges Ingenjörer Byggföretagen — 6 mån vid 12+ mån anst.
+        "procent_under_tak": 0.10,
+        "procent_over_tak": 0.90,
+        "loenetak": round(10 * PBB / 12),
+        "max_manader_kort": 6,
+        "max_manader_lang": 6,
+        "krav_kort_manader": 12,
+        "krav_lang_manader": 12,
+        "fl_10_dagar": False,
+        "tio_dagar_avdrag": "timme",
+    },
+    "Svensk Handel (tjänstemän)": {
+        # Källa: Opus-analys MEDEL konfidens — samma modell som Unionen
+        "procent_under_tak": 0.10,
+        "procent_over_tak": 0.90,
+        "loenetak": round(10 * PBB / 12),
+        "max_manader_kort": 2,
+        "max_manader_lang": 6,
+        "krav_kort_manader": 12,
+        "krav_lang_manader": 24,
+        "fl_10_dagar": False,
+        "tio_dagar_avdrag": "timme",
+    },
+    "Almega IT/konsult": {
+        # Källa: Almega/Innovationsföretagen-modellen — bekräftad HÖG
+        "procent_under_tak": 0.10,
+        "procent_over_tak": 0.90,
+        "loenetak": round(10 * PBB / 12),
+        "max_manader_kort": 2,
+        "max_manader_lang": 6,
+        "krav_kort_manader": 12,
+        "krav_lang_manader": 24,
+        "fl_10_dagar": False,
+        "tio_dagar_avdrag": "timme",
+    },
+    "Stål och metall (tjänstemän)": {
+        # Källa: Opus-analys MEDEL — Teknikavtalsstandard
+        "procent_under_tak": 0.10,
+        "procent_over_tak": 0.90,
+        "loenetak": round(10 * PBB / 12),
+        "max_manader_kort": 2,
+        "max_manader_lang": 6,
+        "krav_kort_manader": 12,
+        "krav_lang_manader": 24,
+        "fl_10_dagar": False,
+        "tio_dagar_avdrag": "timme",
+    },
+    "Vårdförbundet (region)": {
+        # Sjuksköterskor, barnmorskor, biomedicinska analytiker i region
+        # Täcks av AB-avtalet — alias för tydlighetens skull
+        "procent_under_tak": 0.10,
+        "procent_over_tak": 0.90,
+        "loenetak": round(10 * PBB / 12),
+        "steg": [
+            {"krav_manader": 12, "max_manader": 2},
+            {"krav_manader": 24, "max_manader": 3},
+            {"krav_manader": 36, "max_manader": 4},
+            {"krav_manader": 48, "max_manader": 5},
+            {"krav_manader": 60, "max_manader": 6},
+        ],
+        "fl_10_dagar": False,
+        "tio_dagar_avdrag": "timme",
+    },
+}
+
+_AVTAL_ALIAS: dict[str, str] = {
+    "Byggforetagen (tjansteman)": "Byggföretagen (tjänstemän)",
+    "Svensk Handel (tjansteman)": "Svensk Handel (tjänstemän)",
+    "Almega IT/konsult": "Almega IT/konsult",
+    "Vardförbundet (region)": "Vårdförbundet (region)",
 }
