@@ -105,6 +105,28 @@ class TestFlManader:
     def test_max_fl_man_innovationsforetagen_24(self):
         assert max_fl_man("Innovationsföretagen", 24) == 6
 
+    def test_max_fl_man_afa_fpt_11(self):
+        assert max_fl_man("AFA FPT (arbetare)", 11) == 0
+
+    def test_max_fl_man_afa_fpt_12(self):
+        assert max_fl_man("AFA FPT (arbetare)", 12) == 2
+
+    def test_max_fl_man_afa_fpt_24(self):
+        assert max_fl_man("AFA FPT (arbetare)", 24) == 6
+
+    def test_max_fl_man_byggforetagen_12(self):
+        assert max_fl_man("Byggföretagen (tjänstemän)", 12) == 6
+
+    def test_max_fl_man_vardförbundet_36(self):
+        assert max_fl_man("Vårdförbundet (region)", 36) == 4
+
+    def test_max_fl_man_statliga_12(self):
+        """Statliga sektorn steg-modell: 12 mån → 2 FL-mån (korrigerat från gamla 6)."""
+        assert max_fl_man("Statliga sektorn", 12) == 2
+
+    def test_max_fl_man_statliga_60(self):
+        assert max_fl_man("Statliga sektorn", 60) == 6
+
 
 # ============================================================
 # 3. FK-ersättning

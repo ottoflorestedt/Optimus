@@ -56,14 +56,14 @@ def max_fl_man(avtal_namn: str, anstallningstid: Optional[int]) -> int:
         # (Tidigare felaktigt: return 0 if mån < 12 else 12)
         return 0 if mån < 1 else 12
 
-    if avtal_namn in ("Byggföretagen (tjänstemän)",):
+    if avtal_namn == "Byggföretagen (tjänstemän)":
         return 0 if mån < 12 else 6
 
-    if avtal_namn in ("Svensk Handel (tjänstemän)", "Almega IT/konsult", "Stål och metall (tjänstemän)"):
+    if avtal_namn in ("Svensk Handel (tjänstemän)", "Almega IT/konsult",
+                      "Stål och metall (tjänstemän)", "AFA FPT (arbetare)"):
         return 0 if mån < 12 else (2 if mån < 24 else 6)
 
-    if avtal_namn in ("Vårdförbundet (region)",):
-        # Steg-modell identisk med AB-avtalet
+    if avtal_namn == "Vårdförbundet (region)":
         if mån < 12: return 0
         if mån < 24: return 2
         if mån < 36: return 3
@@ -71,7 +71,15 @@ def max_fl_man(avtal_namn: str, anstallningstid: Optional[int]) -> int:
         if mån < 60: return 5
         return 6
 
-    # Unionen, AB-avtalet, Statliga sektorn, Läkarförbundet, övriga
+    if avtal_namn == "Statliga sektorn":
+        if mån < 12: return 0
+        if mån < 24: return 2
+        if mån < 36: return 3
+        if mån < 48: return 4
+        if mån < 60: return 5
+        return 6
+
+    # Unionen, AB-avtalet, Läkarförbundet, övriga
     # A-02: Unionen kräver 12 mån sammanhängande (KOLLEKTIVAVTAL["Unionen"]["krav_kort_manader"] = 12)
     return 0 if mån < 12 else (3 if mån < 24 else 6)
 
@@ -114,6 +122,9 @@ KOLLEKTIVAVTAL = {
         "tio_dagar_avdrag": "timme",
     },
     "Statliga sektorn": {
+        # Villkorsavtalet — steg per anställningstid (samma modell som AB-avtalet)
+        # Källa: ST:s föräldralönssida + Opus-analys HÖG konfidens
+        # Täcker: poliser, kriminalvårdare, tulltjänstemän, militärer, statliga handläggare
         "procent_under_tak": 0.10,
         "procent_over_tak": 0.90,
         "loenetak": round(10 * PBB / 12),
@@ -164,7 +175,8 @@ KOLLEKTIVAVTAL = {
         "tio_dagar_avdrag": "timme",
     },
     "Byggföretagen (tjänstemän)": {
-        # Källa: Sveriges Ingenjörer Byggföretagen — 6 mån vid 12+ mån anst.
+        # Källa: Sveriges Ingenjörer Byggföretagen — HÖG konfidens
+        # 6 mån FL redan vid 12 mån anställning (generösare än Teknikavtalet)
         "procent_under_tak": 0.10,
         "procent_over_tak": 0.90,
         "loenetak": round(10 * PBB / 12),
@@ -188,7 +200,7 @@ KOLLEKTIVAVTAL = {
         "tio_dagar_avdrag": "timme",
     },
     "Almega IT/konsult": {
-        # Källa: Almega/Innovationsföretagen-modellen — bekräftad HÖG
+        # Källa: Almega-modellen — HÖG konfidens
         "procent_under_tak": 0.10,
         "procent_over_tak": 0.90,
         "loenetak": round(10 * PBB / 12),
@@ -212,8 +224,8 @@ KOLLEKTIVAVTAL = {
         "tio_dagar_avdrag": "timme",
     },
     "Vårdförbundet (region)": {
-        # Sjuksköterskor, barnmorskor, biomedicinska analytiker i region
-        # Täcks av AB-avtalet — alias för tydlighetens skull
+        # Sjuksköterskor, barnmorskor, biomedicinska analytiker i region/landsting
+        # Samma steg-modell som AB-avtalet — Källa: Opus HÖG konfidens
         "procent_under_tak": 0.10,
         "procent_over_tak": 0.90,
         "loenetak": round(10 * PBB / 12),
@@ -227,11 +239,28 @@ KOLLEKTIVAVTAL = {
         "fl_10_dagar": False,
         "tio_dagar_avdrag": "timme",
     },
+    "AFA FPT (arbetare)": {
+        # AFA Försäkrings föräldrapenningtillägg — täcker alla LO-arbetare i privat sektor
+        # IF Metall, Byggnads, Handels, HRF, Transport, Livsmedel m.fl. (~1,5 miljoner anställda)
+        # OBS: Betalas av AFA Försäkring, ej arbetsgivaren. Ansöks separat av arbetstagaren.
+        # Anställningstid räknas ihop från alla FPT-anslutna AG senaste 4 åren.
+        # Källa: AFA Försäkrings webbplats — HÖG konfidens
+        "procent_under_tak": 0.10,
+        "procent_over_tak": 0.90,
+        "loenetak": round(10 * PBB / 12),
+        "max_manader_kort": 2,
+        "max_manader_lang": 6,
+        "krav_kort_manader": 12,
+        "krav_lang_manader": 24,
+        "fl_10_dagar": False,
+        "tio_dagar_avdrag": "timme",
+    },
 }
 
 _AVTAL_ALIAS: dict[str, str] = {
     "Byggforetagen (tjansteman)": "Byggföretagen (tjänstemän)",
     "Svensk Handel (tjansteman)": "Svensk Handel (tjänstemän)",
-    "Almega IT/konsult": "Almega IT/konsult",
+    "Stal och metall (tjansteman)": "Stål och metall (tjänstemän)",
     "Vardförbundet (region)": "Vårdförbundet (region)",
+    "AFA FPT (arbetare)": "AFA FPT (arbetare)",
 }

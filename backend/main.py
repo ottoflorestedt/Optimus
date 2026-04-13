@@ -153,9 +153,14 @@ def _get_ki(kommunalskatt_pct: float, kyrka: bool, forsamling: str) -> float:
 
 # ASCII-alias för svenska strängar som frontends utan unicode kan skicka
 _AVTAL_ALIAS: Dict[str, str] = {
-    "Ingen foraldralon":        "Ingen föräldralön",
-    "Ange foraldraelon sjaelv": "Ange föräldralön själv",
-    "Ange foraldralon sjalv":   "Ange föräldralön själv",
+    "Ingen foraldralon":            "Ingen föräldralön",
+    "Ange foraldraelon sjaelv":     "Ange föräldralön själv",
+    "Ange foraldralon sjalv":       "Ange föräldralön själv",
+    "Byggforetagen (tjansteman)":   "Byggföretagen (tjänstemän)",
+    "Svensk Handel (tjansteman)":   "Svensk Handel (tjänstemän)",
+    "Stal och metall (tjansteman)": "Stål och metall (tjänstemän)",
+    "Vardförbundet (region)":       "Vårdförbundet (region)",
+    "AFA FPT (arbetare)":           "AFA FPT (arbetare)",
 }
 
 
