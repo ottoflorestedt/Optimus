@@ -46,6 +46,7 @@ class Period(BaseModel):
     sem_dagar: int = Field(0, ge=0, description="Totalt antal semesterdagar i perioden")
     sem_start: Optional[date] = Field(None, description="Semesterperiodens startdatum")
     sem_slut: Optional[date] = Field(None, description="Semesterperiodens slutdatum")
+    dubbeldagar: bool = Field(False, description="Om True: båda föräldrarna får ta FK samtidigt denna period (max 60 dubbeldagar totalt)")
 
 
 class Lan(BaseModel):
@@ -1157,6 +1158,16 @@ def berakna(indata: Indata):
                     "meddelande": f"{namn} har helg-FK v.{v['vecka']}/{v['ar']} utan vardags-FK. FK på helg kräver FK på vardag samma vecka (april 2025).",
                 })
 
+    # C-02: Räkna totalt antal dubbeldagar och varna om 60-dagarstaket överskrids
+    dubbel_dagar_totalt = 0
+    for v in veckor:
+        if v["fk_a"] > 0 and v["fk_b"] > 0:
+            # Båda har FK denna vecka — räkna överlappande dagar
+            dubbel_dagar_totalt += min(v["fk_a"], 5) * 1  # approximation per vecka
+    dubbel_varning = None
+    if dubbel_dagar_totalt > 60:
+        dubbel_varning = f"Planen innehåller uppskattningsvis {dubbel_dagar_totalt} dubbeldagar. Föräldrabalken tillåter max 60 dubbeldagar före barnets 15-månadersdag."
+
     return {
         "plan_veckor":     plan_veckor,
         "manadsinkomst_a": komp_a,
@@ -1166,4 +1177,6 @@ def berakna(indata: Indata):
         "fl_saldo":        fl_saldo,
         "varningar_perioder": tre_perioder_varningar,
         "varningar_helg": helgkoppling_varningar,
+        "dubbeldagar_totalt": dubbel_dagar_totalt,
+        "dubbeldagar_varning": dubbel_varning,
     }

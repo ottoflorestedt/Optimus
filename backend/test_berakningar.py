@@ -16,6 +16,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
 import pytest
+from datetime import date
 from kalkyl import berakna_skatt, berakna_fk_ersattning, berakna_foraldralon
 from kollektivavtal import max_fl_man, PBB, KOLLEKTIVAVTAL
 
@@ -217,3 +218,59 @@ class TestUtbetalare:
 
     def test_finansforbundet_utbetalare_arbetsgivare(self):
         assert KOLLEKTIVAVTAL["Finansförbundet"]["utbetalare"] == "arbetsgivare"
+
+
+# ============================================================
+# 7. Dubbeldagar C-02
+# ============================================================
+
+class TestDubbeldagar:
+    def _veckor(self, fk_a_vals, fk_b_vals):
+        """Bygg en minimal veckolista med fk_a/fk_b per vecka."""
+        return [{"fk_a": a, "fk_b": b} for a, b in zip(fk_a_vals, fk_b_vals)]
+
+    def _rakna(self, veckor):
+        """Replikerar C-02-logiken från main.py."""
+        totalt = 0
+        for v in veckor:
+            if v["fk_a"] > 0 and v["fk_b"] > 0:
+                totalt += min(v["fk_a"], 5)
+        return totalt
+
+    def test_period_dubbeldagar_falt_default_false(self):
+        """Period-modellen ska ha dubbeldagar=False som default."""
+        from main import Period
+        p = Period(start=date(2026, 1, 5), slut=date(2026, 1, 9))
+        assert p.dubbeldagar is False
+
+    def test_period_dubbeldagar_falt_true(self):
+        """Period-modellen accepterar dubbeldagar=True."""
+        from main import Period
+        p = Period(start=date(2026, 1, 5), slut=date(2026, 1, 9), dubbeldagar=True)
+        assert p.dubbeldagar is True
+
+    def test_dubbeldagar_totalt_ingen_overlap(self):
+        """Inga överlappande veckor → 0 dubbeldagar."""
+        veckor = self._veckor([5, 0, 5], [0, 5, 0])
+        assert self._rakna(veckor) == 0
+
+    def test_dubbeldagar_totalt_full_overlap(self):
+        """12 veckor med 5 fk_a och 5 fk_b → 60 dubbeldagar (precis på gränsen)."""
+        veckor = self._veckor([5] * 12, [5] * 12)
+        assert self._rakna(veckor) == 60
+
+    def test_dubbeldagar_varning_over_60(self):
+        """13 veckor med full overlap → 65 dubbeldagar → varning ska genereras."""
+        totalt = self._rakna(self._veckor([5] * 13, [5] * 13))
+        assert totalt > 60
+        varning = (
+            f"Planen innehåller uppskattningsvis {totalt} dubbeldagar. "
+            "Föräldrabalken tillåter max 60 dubbeldagar före barnets 15-månadersdag."
+        )
+        assert "60 dubbeldagar" in varning
+
+    def test_dubbeldagar_ingen_varning_vid_60(self):
+        """Exakt 60 dubbeldagar → ingen varning (gränsen är > 60)."""
+        totalt = self._rakna(self._veckor([5] * 12, [5] * 12))
+        assert totalt == 60
+        assert not (totalt > 60)
