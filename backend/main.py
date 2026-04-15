@@ -200,6 +200,12 @@ def _avtal_for_calc(f: ForaldrarIndata) -> Union[str, dict]:
     return avtal  # kollektivavtalsnamn, t.ex. "Unionen"
 
 
+def _get_utbetalare(avtal_namn: str) -> str:
+    """Returnerar 'afa' om avtalet är AFA FPT, annars 'arbetsgivare'."""
+    avtal = KOLLEKTIVAVTAL.get(avtal_namn, {})
+    return avtal.get("utbetalare", "arbetsgivare")
+
+
 # ── Portad från app.py: _wd_i_vecka ──────────────────────────
 
 def _wd_i_vecka(monday: date, period_start, period_end) -> int:
@@ -1107,11 +1113,13 @@ def berakna(indata: Indata):
             "fl_manader_totalt":  max_fl_man_a,
             "fl_manader_anvanda": fl_man_a,
             "fl_manader_kvar":    max(0, max_fl_man_a - fl_man_a) if max_fl_man_a < 999 else 999,
+            "utbetalare":         _get_utbetalare(_avtal_namn_a),
         },
         "b": {
             "fl_manader_totalt":  max_fl_man_b,
             "fl_manader_anvanda": fl_man_b,
             "fl_manader_kvar":    max(0, max_fl_man_b - fl_man_b) if max_fl_man_b < 999 else 999,
+            "utbetalare":         _get_utbetalare(_avtal_namn_b),
         },
     }
 

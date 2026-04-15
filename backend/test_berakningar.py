@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
 import pytest
 from kalkyl import berakna_skatt, berakna_fk_ersattning, berakna_foraldralon
-from kollektivavtal import max_fl_man, PBB
+from kollektivavtal import max_fl_man, PBB, KOLLEKTIVAVTAL
 
 
 # ============================================================
@@ -202,3 +202,18 @@ class TestTvillingfodsel:
         """Sparade SGI-dagar adderas ovanpå grundbeloppet."""
         assert self._sp_tot(1, sparade_sgi=30) == 225
         assert self._sp_tot(2, sparade_sgi=30) == 315
+
+
+# ============================================================
+# 6. Utbetalare-flagga
+# ============================================================
+
+class TestUtbetalare:
+    def test_afa_fpt_utbetalare_afa(self):
+        assert KOLLEKTIVAVTAL["AFA FPT (arbetare)"]["utbetalare"] == "afa"
+
+    def test_teknikavtalet_utbetalare_arbetsgivare(self):
+        assert KOLLEKTIVAVTAL["Teknikavtalet"]["utbetalare"] == "arbetsgivare"
+
+    def test_finansforbundet_utbetalare_arbetsgivare(self):
+        assert KOLLEKTIVAVTAL["Finansförbundet"]["utbetalare"] == "arbetsgivare"

@@ -86,6 +86,7 @@ def max_fl_man(avtal_namn: str, anstallningstid: Optional[int]) -> int:
 
 KOLLEKTIVAVTAL = {
     "Unionen": {
+        "utbetalare": "arbetsgivare",
         "procent_under_tak": 0.10,
         "procent_over_tak": 0.90,
         "loenetak": round(10 * PBB / 12),  # A-04
@@ -97,6 +98,7 @@ KOLLEKTIVAVTAL = {
         "tio_dagar_avdrag": "timme",
     },
     "Teknikavtalet": {
+        "utbetalare": "arbetsgivare",
         "procent_under_tak": 0.10,
         "procent_over_tak": 0.90,
         "loenetak": round(10 * PBB / 12),  # A-04
@@ -108,6 +110,7 @@ KOLLEKTIVAVTAL = {
         "tio_dagar_avdrag": "timme",
     },
     "AB-avtalet": {
+        "utbetalare": "arbetsgivare",
         "procent_under_tak": 0.10,
         "procent_over_tak": 0.90,
         "loenetak": round(10 * PBB / 12),  # A-04
@@ -125,6 +128,7 @@ KOLLEKTIVAVTAL = {
         # Villkorsavtalet — steg per anställningstid (samma modell som AB-avtalet)
         # Källa: ST:s föräldralönssida + Opus-analys HÖG konfidens
         # Täcker: poliser, kriminalvårdare, tulltjänstemän, militärer, statliga handläggare
+        "utbetalare": "arbetsgivare",
         "procent_under_tak": 0.10,
         "procent_over_tak": 0.90,
         "loenetak": round(10 * PBB / 12),
@@ -139,6 +143,7 @@ KOLLEKTIVAVTAL = {
         "tio_dagar_avdrag": "timme",
     },
     "Finansförbundet": {
+        "utbetalare": "arbetsgivare",
         "procent_under_tak": 0.10,
         "procent_over_tak": 0.80,
         "loenetak": round(10 * PBB / 12),  # A-04
@@ -150,6 +155,7 @@ KOLLEKTIVAVTAL = {
         "tio_dagar_avdrag": "timme",
     },
     "Läkarförbundet": {
+        "utbetalare": "arbetsgivare",
         "procent_under_tak": 0.10,
         "procent_over_tak": 0.90,
         "loenetak": round(10 * PBB / 12),  # A-04
@@ -164,6 +170,7 @@ KOLLEKTIVAVTAL = {
         # Innovationsföretagen (fd. IT&Telekomföretagen) – kollektivavtal med Unionen/Sveriges Ingenjörer
         # Samma villkor som Teknikavtalet: sammanhängande anställningstid avgör.
         # Källor: Innovationsavtalet 2024 § 12 Föräldralön
+        "utbetalare": "arbetsgivare",
         "procent_under_tak": 0.10,
         "procent_over_tak": 0.90,
         "loenetak": round(10 * PBB / 12),
@@ -177,6 +184,7 @@ KOLLEKTIVAVTAL = {
     "Byggföretagen (tjänstemän)": {
         # Källa: Sveriges Ingenjörer Byggföretagen — HÖG konfidens
         # 6 mån FL redan vid 12 mån anställning (generösare än Teknikavtalet)
+        "utbetalare": "arbetsgivare",
         "procent_under_tak": 0.10,
         "procent_over_tak": 0.90,
         "loenetak": round(10 * PBB / 12),
@@ -189,6 +197,7 @@ KOLLEKTIVAVTAL = {
     },
     "Svensk Handel (tjänstemän)": {
         # Källa: Opus-analys MEDEL konfidens — samma modell som Unionen
+        "utbetalare": "arbetsgivare",
         "procent_under_tak": 0.10,
         "procent_over_tak": 0.90,
         "loenetak": round(10 * PBB / 12),
@@ -201,6 +210,7 @@ KOLLEKTIVAVTAL = {
     },
     "Almega IT/konsult": {
         # Källa: Almega-modellen — HÖG konfidens
+        "utbetalare": "arbetsgivare",
         "procent_under_tak": 0.10,
         "procent_over_tak": 0.90,
         "loenetak": round(10 * PBB / 12),
@@ -213,6 +223,7 @@ KOLLEKTIVAVTAL = {
     },
     "Stål och metall (tjänstemän)": {
         # Källa: Opus-analys MEDEL — Teknikavtalsstandard
+        "utbetalare": "arbetsgivare",
         "procent_under_tak": 0.10,
         "procent_over_tak": 0.90,
         "loenetak": round(10 * PBB / 12),
@@ -226,6 +237,7 @@ KOLLEKTIVAVTAL = {
     "Vårdförbundet (region)": {
         # Sjuksköterskor, barnmorskor, biomedicinska analytiker i region/landsting
         # Samma steg-modell som AB-avtalet — Källa: Opus HÖG konfidens
+        "utbetalare": "arbetsgivare",
         "procent_under_tak": 0.10,
         "procent_over_tak": 0.90,
         "loenetak": round(10 * PBB / 12),
@@ -245,6 +257,7 @@ KOLLEKTIVAVTAL = {
         # OBS: Betalas av AFA Försäkring, ej arbetsgivaren. Ansöks separat av arbetstagaren.
         # Anställningstid räknas ihop från alla FPT-anslutna AG senaste 4 åren.
         # Källa: AFA Försäkrings webbplats — HÖG konfidens
+        "utbetalare": "afa",
         "procent_under_tak": 0.10,
         "procent_over_tak": 0.90,
         "loenetak": round(10 * PBB / 12),
