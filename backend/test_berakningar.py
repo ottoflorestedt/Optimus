@@ -274,3 +274,81 @@ class TestDubbeldagar:
         totalt = self._rakna(self._veckor([5] * 12, [5] * 12))
         assert totalt == 60
         assert not (totalt > 60)
+
+
+# ============================================================
+# 8. Deltidsuttag FK C-03
+# ============================================================
+
+class TestFkGrad:
+    def test_fk_grad_default_100(self):
+        """Period-modellen ska ha fk_grad=100 som default."""
+        from main import Period
+        p = Period(start=date(2026, 1, 5), slut=date(2026, 1, 9))
+        assert p.fk_grad == 100
+
+    def test_fk_grad_25_accepteras(self):
+        """fk_grad=25 är ett giltigt värde."""
+        from main import Period
+        p = Period(start=date(2026, 1, 5), slut=date(2026, 1, 9), fk_grad=25)
+        assert p.fk_grad == 25
+
+    def test_fk_grad_50_accepteras(self):
+        """fk_grad=50 är ett giltigt värde."""
+        from main import Period
+        p = Period(start=date(2026, 1, 5), slut=date(2026, 1, 9), fk_grad=50)
+        assert p.fk_grad == 50
+
+    def test_fk_grad_75_accepteras(self):
+        """fk_grad=75 är ett giltigt värde."""
+        from main import Period
+        p = Period(start=date(2026, 1, 5), slut=date(2026, 1, 9), fk_grad=75)
+        assert p.fk_grad == 75
+
+    def test_fk_grad_60_ger_valueerror(self):
+        """fk_grad=60 är inte ett tillåtet värde — ska ge ValueError."""
+        import pytest
+        from main import Period
+        with pytest.raises(Exception):
+            Period(start=date(2026, 1, 5), slut=date(2026, 1, 9), fk_grad=60)
+
+    def test_fk_grad_50_ger_halv_fk_ersattning(self):
+        """
+        fk_grad=50 ska ge halv FK-ersättning jämfört med fk_grad=100.
+        Testar _komponenter_manad direkt med syntetisk veckodata.
+        """
+        from main import _komponenter_manad, _DF
+        from datetime import date, timedelta
+        from kalkyl import berakna_fk_ersattning, berakna_foraldralon
+
+        lon = 50000
+        ki = 0.3
+        fl_r = berakna_foraldralon(lon, "Ingen föräldralön", 24)
+
+        monday = date(2026, 3, 2)  # Vecka i mars 2026
+        vecka = {
+            "vecka": 10, "ar": 2026,
+            "datum_start": monday, "datum_slut": monday + timedelta(days=4),
+            "fk_a": 5, "fk_grad_a": 100,
+            "lg_a": 0, "sem_a": 0, "tio_a": 0,
+            "sjuk_lon_a": 0, "sjuk_fk_a": 0, "sjuk_lag_a": 0,
+            "sjuk_grad_a": 100, "sjuk_karens_a": False,
+            "ledig_a": True, "avdragstyp_a": "dag",
+        }
+
+        vecka_50 = {**vecka, "fk_grad_a": 50}
+
+        def rakna(v):
+            return _komponenter_manad(
+                2026, 3, [v], _DF([v]), lon, lon * 0.7, ki,
+                fl_r, False,
+                "fk_a", "lg_a", "sem_a", "tio_a",
+                "sjuk_lon_a", "sjuk_fk_a", "sjuk_lag_a", "sjuk_grad_a", "sjuk_karens_a",
+                "ledig_a", 0,
+                fk_grad_col="fk_grad_a",
+            )
+
+        res100 = rakna(vecka)
+        res50  = rakna(vecka_50)
+        # fk_netto vid 50% ska vara ungefär hälften av 100%
+        assert res50["fk_netto"] == pytest.approx(res100["fk_netto"] / 2, abs=50)

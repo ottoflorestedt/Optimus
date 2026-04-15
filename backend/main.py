@@ -10,7 +10,7 @@ from typing import List, Optional, Union, Dict, Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 from kalkyl import berakna_skatt, berakna_fk_ersattning, berakna_foraldralon, berakna_ranteavdrag
 from skattesatser import KOMMUNALSKATT_2026, KYRKOAVGIFT_2026, kommunkod_till_namn
@@ -47,6 +47,14 @@ class Period(BaseModel):
     sem_start: Optional[date] = Field(None, description="Semesterperiodens startdatum")
     sem_slut: Optional[date] = Field(None, description="Semesterperiodens slutdatum")
     dubbeldagar: bool = Field(False, description="Om True: båda föräldrarna får ta FK samtidigt denna period (max 60 dubbeldagar totalt)")
+    fk_grad: int = Field(100, ge=25, le=100, description="FK-uttag i procent: 25, 50, 75 eller 100. En hel FK-dag konsumeras oavsett grad.")
+
+    @field_validator("fk_grad")
+    @classmethod
+    def validera_fk_grad(cls, v):
+        if v not in (25, 50, 75, 100):
+            raise ValueError("fk_grad måste vara 25, 50, 75 eller 100")
+        return v
 
 
 class Lan(BaseModel):
@@ -478,11 +486,22 @@ def _generera_plan_veckor(
                     sjuk_karens_b = True
                 sk_wd_b[i] += overlap
 
+        # C-03: FK-grad för veckan (tar lägsta graden om perioder har olika grader)
+        fk_grad_a_v = 100
+        for p in perioder_a:
+            if _wd_i_vecka(monday, p.start, p.slut) > 0:
+                fk_grad_a_v = min(fk_grad_a_v, p.fk_grad)
+        fk_grad_b_v = 100
+        for p in perioder_b:
+            if _wd_i_vecka(monday, p.start, p.slut) > 0:
+                fk_grad_b_v = min(fk_grad_b_v, p.fk_grad)
+
         veckor.append({
             "vecka":          int(iso[1]),
             "ar":             int(iso[0]),
             "datum_start":    monday,
             "datum_slut":     friday,
+            "fk_grad_a":      fk_grad_a_v,
             "fk_a":           int(fk_a),
             "lg_a":           0,
             "sem_a":          int(s_a),
@@ -494,6 +513,7 @@ def _generera_plan_veckor(
             "sjuk_karens_a":  sjuk_karens_a,
             "ledig_a":        ledig_a,
             "avdragstyp_a":   _atyp_for_week(monday, atyp_karta_a),  # B-01
+            "fk_grad_b":      fk_grad_b_v,
             "fk_b":           int(fk_b),
             "lg_b":           0,
             "sem_b":          int(s_b),
@@ -516,6 +536,7 @@ def _generera_plan_veckor(
 class _Row:
     def __init__(self, d: dict): self._d = d
     def __getitem__(self, key): return self._d[key]
+    def get(self, key, default=None): return self._d.get(key, default)
 
 
 class _DF:
@@ -555,7 +576,8 @@ def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
                        col_sjuk_lon, col_sjuk_fk, col_sjuk_lag, col_sjuk_grad, col_sjuk_karens,
                        col_ledig, barnbidrag,
                        avdragstyp_col="avdragstyp_a",   # B-01
-                       atyp_karta=None):                 # B-01
+                       atyp_karta=None,                  # B-01
+                       fk_grad_col="fk_grad_a"):         # C-03
     """Beräknar en månads inkomstkomponenter för en förälder givet veckoplan.
 
     netto_dag = nettolön_mån / 21 inkluderar progressiv statlig inkomstskatt,
@@ -659,6 +681,8 @@ def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
         ledig      = bool(veckor[i][col_ledig])
         fk_wd      = min(fk, 5)
         total_sjuk = sk_lon + sk_fk + sk_lag
+        # C-03: FK-grad för denna vecka (25/50/75/100 → 0.25/0.50/0.75/1.00)
+        fk_grad    = int(df.iloc[i].get(fk_grad_col, 100)) / 100
 
         # ── B-01: top-down lönberäkning ──────────────────────────────
         # Beräknar lon_n top-down (nettolön_mån − dag-avdrag − kal-avdrag) i
@@ -668,13 +692,14 @@ def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
             if ledig:
                 atyp = veckor[i].get(avdragstyp_col, "dag")
                 if atyp == "dag":
-                    # Dag-avdrag: avdraget = fk_wd × netto_dag (per vecka)
-                    dag_fk_n += fk_wd * netto_dag  * frac
-                    dag_fk_b += fk_wd * brutto_dag * frac
+                    # Dag-avdrag skalas med fk_grad: vid 50% FK jobbar föräldern 50% → halv avdrag
+                    dag_fk_n += fk_wd * fk_grad * netto_dag  * frac
+                    dag_fk_b += fk_wd * fk_grad * brutto_dag * frac
                 # kalender: avdrag beräknas efter loopen via _kal_days_i_manad
         else:
             # Bakåtkompatibelt bottom-up-läge (atyp_karta=None)
-            arb = 0 if ledig else max(0, 5 - fk_wd - lg - sem - tio - total_sjuk)
+            # C-03: vid deltids-FK arbetar föräldern fk_grad av dagen → skala avdraget
+            arb = 0 if ledig else max(0, 5 - fk_wd * fk_grad - lg - sem - tio - total_sjuk)
             lon_n += arb * netto_dag  * frac
             lon_b += arb * brutto_dag * frac
         # ─────────────────────────────────────────────────────────────
@@ -682,8 +707,9 @@ def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
         tillagg    = lon * 0.0043 * sem * frac
         sem_n += sem * netto_dag  * frac + tillagg
         sem_b += sem * brutto_dag * frac + tillagg
-        fk_n  += (fk_ndag * fk_wd + lg_ndag * max(fk - 5, 0) + lg_ndag * lg) * frac
-        fk_b  += (fk_bdag * fk_wd + lg_bdag * max(fk - 5, 0) + lg_bdag * lg) * frac
+        # C-03: FK-ersättning skalas med fk_grad; helgdagar (>5) och LG påverkas inte av grad
+        fk_n  += (fk_ndag * fk_wd * fk_grad + lg_ndag * max(fk - 5, 0) + lg_ndag * lg) * frac
+        fk_b  += (fk_bdag * fk_wd * fk_grad + lg_bdag * max(fk - 5, 0) + lg_bdag * lg) * frac
         if fl_bool and fk > 0:
             fl_n += fl_ndag * fk_wd * frac
             fl_b += fl_bdag * fk_wd * frac
@@ -963,12 +989,14 @@ def berakna(indata: Indata):
                                 fl_r_a, fl_active_a, "fk_a", "lg_a", "sem_a", "tio_a",
                                 "sjuk_lon_a", "sjuk_fk_a", "sjuk_lag_a", "sjuk_grad_a", "sjuk_karens_a",
                                 "ledig_a", bb_mån,
-                                avdragstyp_col="avdragstyp_a", atyp_karta=_atyp_karta_a)
+                                avdragstyp_col="avdragstyp_a", atyp_karta=_atyp_karta_a,
+                                fk_grad_col="fk_grad_a")
         kb = _komponenter_manad(ar, man, veckor, df, lon_b, nettolön_mån_b, ki_b,
                                 fl_r_b, fl_active_b, "fk_b", "lg_b", "sem_b", "tio_b",
                                 "sjuk_lon_b", "sjuk_fk_b", "sjuk_lag_b", "sjuk_grad_b", "sjuk_karens_b",
                                 "ledig_b", bb_mån,
-                                avdragstyp_col="avdragstyp_b", atyp_karta=_atyp_karta_b)
+                                avdragstyp_col="avdragstyp_b", atyp_karta=_atyp_karta_b,
+                                fk_grad_col="fk_grad_b")
 
         # Uppdatera FL-räknare
         if ka["fl_netto"] > 0:
