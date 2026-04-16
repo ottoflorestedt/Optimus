@@ -168,7 +168,10 @@ _AVTAL_ALIAS: Dict[str, str] = {
     "Byggforetagen (tjansteman)":   "Byggföretagen (tjänstemän)",
     "Svensk Handel (tjansteman)":   "Svensk Handel (tjänstemän)",
     "Stal och metall (tjansteman)": "Stål och metall (tjänstemän)",
-    "Vardförbundet (region)":       "Vårdförbundet (region)",
+    "Vardforbundet (region)":       "Vårdförbundet (region)",   # fix: ö borttaget ur nyckel
+    "Innovationsforetagen":         "Innovationsföretagen",
+    "Finansforbundet":              "Finansförbundet",
+    "Lakarforbundet":               "Läkarförbundet",
     "AFA FPT (arbetare)":           "AFA FPT (arbetare)",
 }
 

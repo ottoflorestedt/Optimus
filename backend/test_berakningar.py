@@ -128,6 +128,67 @@ class TestFlManader:
     def test_max_fl_man_statliga_60(self):
         assert max_fl_man("Statliga sektorn", 60) == 6
 
+    # ── AB-avtalet ───────────────────────────────────────────
+    # OBS: max_fl_man har ingen steg-hantering för AB-avtalet och
+    # faller igenom till den generiska grenen (som Unionen: 0/3/6).
+    # KOLLEKTIVAVTAL-dicten har steg-modell (12→2, 24→3, 36→4, 48→5, 60→6)
+    # men det är berakna_foraldralon som läser stegen, inte max_fl_man.
+
+    def test_max_fl_man_ab_under_12(self):
+        assert max_fl_man("AB-avtalet", 11) == 0
+
+    def test_max_fl_man_ab_12(self):
+        assert max_fl_man("AB-avtalet", 12) == 3   # generisk gren: 12–23 mån → 3
+
+    def test_max_fl_man_ab_24(self):
+        assert max_fl_man("AB-avtalet", 24) == 6
+
+    # ── Läkarförbundet ───────────────────────────────────────
+    # Faller igenom till generisk gren (0/3/6) precis som AB-avtalet.
+    # KOLLEKTIVAVTAL-dicten har krav_lang=6 och max_lang=9 (ej implementerat i max_fl_man).
+
+    def test_max_fl_man_lakarforbundet_under_12(self):
+        assert max_fl_man("Läkarförbundet", 11) == 0
+
+    def test_max_fl_man_lakarforbundet_12(self):
+        assert max_fl_man("Läkarförbundet", 12) == 3
+
+    def test_max_fl_man_lakarforbundet_24(self):
+        assert max_fl_man("Läkarförbundet", 24) == 6
+
+    # ── Svensk Handel (tjänstemän) ────────────────────────────
+
+    def test_max_fl_man_svensk_handel_under_12(self):
+        assert max_fl_man("Svensk Handel (tjänstemän)", 11) == 0
+
+    def test_max_fl_man_svensk_handel_12(self):
+        assert max_fl_man("Svensk Handel (tjänstemän)", 12) == 2
+
+    def test_max_fl_man_svensk_handel_24(self):
+        assert max_fl_man("Svensk Handel (tjänstemän)", 24) == 6
+
+    # ── Almega IT/konsult ─────────────────────────────────────
+
+    def test_max_fl_man_almega_under_12(self):
+        assert max_fl_man("Almega IT/konsult", 11) == 0
+
+    def test_max_fl_man_almega_12(self):
+        assert max_fl_man("Almega IT/konsult", 12) == 2
+
+    def test_max_fl_man_almega_24(self):
+        assert max_fl_man("Almega IT/konsult", 24) == 6
+
+    # ── Stål och metall (tjänstemän) ─────────────────────────
+
+    def test_max_fl_man_stal_under_12(self):
+        assert max_fl_man("Stål och metall (tjänstemän)", 11) == 0
+
+    def test_max_fl_man_stal_12(self):
+        assert max_fl_man("Stål och metall (tjänstemän)", 12) == 2
+
+    def test_max_fl_man_stal_24(self):
+        assert max_fl_man("Stål och metall (tjänstemän)", 24) == 6
+
 
 # ============================================================
 # 3. FK-ersättning
