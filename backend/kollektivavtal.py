@@ -56,6 +56,10 @@ def max_fl_man(avtal_namn: str, anstallningstid: Optional[int]) -> int:
         # (Tidigare felaktigt: return 0 if mån < 12 else 12)
         return 0 if mån < 1 else 12
 
+    if avtal_namn == "Läkarförbundet":
+        # krav_kort = krav_lang = 6 mån, ingen tier-uppdelning — max 9 mån FL från 6 mån
+        return 0 if mån < 6 else 9
+
     if avtal_namn == "Byggföretagen (tjänstemän)":
         return 0 if mån < 12 else 6
 

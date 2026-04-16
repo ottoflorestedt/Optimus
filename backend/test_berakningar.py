@@ -150,18 +150,15 @@ class TestFlManader:
     def test_max_fl_man_ab_60(self):
         assert max_fl_man("AB-avtalet", 60) == 6
 
-    # ── Läkarförbundet ───────────────────────────────────────
-    # Faller igenom till generisk gren (0/3/6) precis som AB-avtalet.
-    # KOLLEKTIVAVTAL-dicten har krav_lang=6 och max_lang=9 (ej implementerat i max_fl_man).
+    # ── Läkarförbundet (krav_kort = krav_lang = 6 mån → 9 FL-mån) ─
+    def test_max_fl_man_lakarforbundet_5(self):
+        assert max_fl_man("Läkarförbundet", 5) == 0
 
-    def test_max_fl_man_lakarforbundet_under_12(self):
-        assert max_fl_man("Läkarförbundet", 11) == 0
-
-    def test_max_fl_man_lakarforbundet_12(self):
-        assert max_fl_man("Läkarförbundet", 12) == 3
+    def test_max_fl_man_lakarforbundet_6(self):
+        assert max_fl_man("Läkarförbundet", 6) == 9
 
     def test_max_fl_man_lakarforbundet_24(self):
-        assert max_fl_man("Läkarförbundet", 24) == 6
+        assert max_fl_man("Läkarförbundet", 24) == 9
 
     # ── Svensk Handel (tjänstemän) ────────────────────────────
 
