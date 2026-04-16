@@ -63,7 +63,9 @@ def max_fl_man(avtal_namn: str, anstallningstid: Optional[int]) -> int:
                       "Stål och metall (tjänstemän)", "AFA FPT (arbetare)"):
         return 0 if mån < 12 else (2 if mån < 24 else 6)
 
-    if avtal_namn == "Vårdförbundet (region)":
+    # Steg-modell: AB-avtalet, Statliga sektorn, Vårdförbundet (region)
+    # 12→2, 24→3, 36→4, 48→5, 60→6 månader FL
+    if avtal_namn in ("AB-avtalet", "Statliga sektorn", "Vårdförbundet (region)"):
         if mån < 12: return 0
         if mån < 24: return 2
         if mån < 36: return 3
@@ -71,15 +73,7 @@ def max_fl_man(avtal_namn: str, anstallningstid: Optional[int]) -> int:
         if mån < 60: return 5
         return 6
 
-    if avtal_namn == "Statliga sektorn":
-        if mån < 12: return 0
-        if mån < 24: return 2
-        if mån < 36: return 3
-        if mån < 48: return 4
-        if mån < 60: return 5
-        return 6
-
-    # Unionen, AB-avtalet, Läkarförbundet, övriga
+    # Unionen, Läkarförbundet, övriga
     # A-02: Unionen kräver 12 mån sammanhängande (KOLLEKTIVAVTAL["Unionen"]["krav_kort_manader"] = 12)
     return 0 if mån < 12 else (3 if mån < 24 else 6)
 

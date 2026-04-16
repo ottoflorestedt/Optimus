@@ -128,20 +128,27 @@ class TestFlManader:
     def test_max_fl_man_statliga_60(self):
         assert max_fl_man("Statliga sektorn", 60) == 6
 
-    # ── AB-avtalet ───────────────────────────────────────────
-    # OBS: max_fl_man har ingen steg-hantering för AB-avtalet och
-    # faller igenom till den generiska grenen (som Unionen: 0/3/6).
-    # KOLLEKTIVAVTAL-dicten har steg-modell (12→2, 24→3, 36→4, 48→5, 60→6)
-    # men det är berakna_foraldralon som läser stegen, inte max_fl_man.
-
+    # ── AB-avtalet (steg-modell: 12→2, 24→3, 36→4, 48→5, 60→6) ─
     def test_max_fl_man_ab_under_12(self):
         assert max_fl_man("AB-avtalet", 11) == 0
 
     def test_max_fl_man_ab_12(self):
-        assert max_fl_man("AB-avtalet", 12) == 3   # generisk gren: 12–23 mån → 3
+        assert max_fl_man("AB-avtalet", 12) == 2
+
+    def test_max_fl_man_ab_23(self):
+        assert max_fl_man("AB-avtalet", 23) == 2
 
     def test_max_fl_man_ab_24(self):
-        assert max_fl_man("AB-avtalet", 24) == 6
+        assert max_fl_man("AB-avtalet", 24) == 3
+
+    def test_max_fl_man_ab_36(self):
+        assert max_fl_man("AB-avtalet", 36) == 4
+
+    def test_max_fl_man_ab_48(self):
+        assert max_fl_man("AB-avtalet", 48) == 5
+
+    def test_max_fl_man_ab_60(self):
+        assert max_fl_man("AB-avtalet", 60) == 6
 
     # ── Läkarförbundet ───────────────────────────────────────
     # Faller igenom till generisk gren (0/3/6) precis som AB-avtalet.
