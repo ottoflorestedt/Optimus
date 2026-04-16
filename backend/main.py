@@ -10,6 +10,7 @@ from typing import List, Optional, Union, Dict, Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 from kalkyl import berakna_skatt, berakna_fk_ersattning, berakna_foraldralon, berakna_ranteavdrag
@@ -825,6 +826,42 @@ def _ersattning_tabell(manadslon: int, avtal: str, anstallning: int, ki: float, 
 @app.get("/health", summary="Hälsokontroll")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/sitemap.xml", summary="XML-sitemap för balba.se")
+def sitemap():
+    _URLS = [
+        ("https://balba.se/",                                            "1.0"),
+        ("https://balba.se/guider",                                      "0.8"),
+        ("https://balba.se/guider/foraldralon-kollektivavtal",           "0.8"),
+        ("https://balba.se/guider/rakna-foraldrapenning-par",            "0.8"),
+        ("https://balba.se/guider/vanliga-misstag-foraldraledighet",     "0.8"),
+    ]
+    entries = "\n".join(
+        f"  <url>\n"
+        f"    <loc>{loc}</loc>\n"
+        f"    <changefreq>monthly</changefreq>\n"
+        f"    <priority>{pri}</priority>\n"
+        f"  </url>"
+        for loc, pri in _URLS
+    )
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"{entries}\n"
+        "</urlset>"
+    )
+    return Response(content=xml, media_type="application/xml")
+
+
+@app.get("/robots.txt", summary="robots.txt för balba.se")
+def robots():
+    content = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Sitemap: https://balba.se/sitemap.xml\n"
+    )
+    return Response(content=content, media_type="text/plain")
 
 
 @app.get("/ersattning_per_dag", summary="FK-ersättning och föräldralön per antal FK-dagar/vecka")

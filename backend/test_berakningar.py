@@ -803,3 +803,30 @@ class TestStorhelgsrad:
         # Alla datum i svaret ska vara vardagar (weekday < 5)
         for rad in rader:
             assert date.fromisoformat(rad["datum"]).weekday() < 5
+
+
+# ============================================================
+# 14. Sitemap och robots.txt (Sprint 9)
+# ============================================================
+
+class TestSitemapRobots:
+    def _client(self):
+        from fastapi.testclient import TestClient
+        from main import app
+        return TestClient(app)
+
+    def test_sitemap_status_200_och_content_type_xml(self):
+        """GET /sitemap.xml ska returnera 200 med Content-Type application/xml."""
+        resp = self._client().get("/sitemap.xml")
+        assert resp.status_code == 200
+        assert "application/xml" in resp.headers["content-type"]
+        assert "balba.se" in resp.text
+        assert "<urlset" in resp.text
+
+    def test_robots_status_200_och_content_type_plain(self):
+        """GET /robots.txt ska returnera 200 med Content-Type text/plain."""
+        resp = self._client().get("/robots.txt")
+        assert resp.status_code == 200
+        assert "text/plain" in resp.headers["content-type"]
+        assert "User-agent: *" in resp.text
+        assert "https://balba.se/sitemap.xml" in resp.text
