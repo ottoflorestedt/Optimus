@@ -861,6 +861,24 @@ def ersattning_per_dag(
     }
 
 
+# ── U9: Svenska röda dagar 2025–2028 ─────────────────────────
+RODA_DAGAR: set = {
+    "2025-01-01","2025-01-06","2025-04-18","2025-04-19","2025-04-20","2025-04-21",
+    "2025-05-01","2025-05-29","2025-06-06","2025-06-07","2025-06-08","2025-12-25",
+    "2025-12-26",
+    "2026-01-01","2026-01-06","2026-04-03","2026-04-04","2026-04-05","2026-04-06",
+    "2026-05-01","2026-05-14","2026-05-23","2026-06-06","2026-06-19","2026-06-20",
+    "2026-12-24","2026-12-25","2026-12-26","2026-12-31",
+    "2027-01-01","2027-01-06","2027-03-26","2027-03-27","2027-03-28","2027-03-29",
+    "2027-05-01","2027-05-06","2027-05-15","2027-05-16","2027-06-05","2027-06-06",
+    "2027-06-25","2027-06-26","2027-12-24","2027-12-25","2027-12-26","2027-12-31",
+    "2028-01-01","2028-01-06","2028-04-14","2028-04-15","2028-04-16","2028-04-17",
+    "2028-05-01","2028-05-25","2028-06-03","2028-06-06","2028-06-23","2028-06-24",
+    "2028-12-24","2028-12-25","2028-12-26","2028-12-31",
+}
+_VECKODAGAR = ["Måndag", "Tisdag", "Onsdag", "Torsdag", "Fredag"]
+
+
 @app.post("/berakna", summary="Beräkna veckoplan och skatteavdragstabell")
 def berakna(indata: Indata):
     """
@@ -898,6 +916,10 @@ def berakna(indata: Indata):
     nettolön_mån_a = berakna_skatt(lon_a, ki_a, kyrkoavg_a)["nettolön/mån"]
     nettolön_mån_b = berakna_skatt(lon_b, ki_b, kyrkoavg_b)["nettolön/mån"]
 
+    # ── FK-ersättning per dag (behövs av U9 storhelgsråd) ─────
+    fk_r_a = berakna_fk_ersattning(lon_a, ki_a, kyrkoavg_a)
+    fk_r_b = berakna_fk_ersattning(lon_b, ki_b, kyrkoavg_b)
+
     # ── Veckoplan ─────────────────────────────────────────────
     def _parse_tio_start(f: ForaldrarIndata) -> Optional[date]:
         return date.fromisoformat(f.tio_dagar_start) if f.tio_dagar_start else None
@@ -915,7 +937,38 @@ def berakna(indata: Indata):
         sjukskrivningar_b=indata.foraldrar_b.sjukskrivningar,
     )
     if not veckor:
-        return {"plan_veckor": [], "manadsinkomst_a": [], "manadsinkomst_b": [], "skatteavdrag": {}}
+        return {"plan_veckor": [], "manadsinkomst_a": [], "manadsinkomst_b": [], "skatteavdrag": {},
+                "storhelgsrad": []}
+
+    # ── U9: Storhelgsråd med sparad_krona ────────────────────
+    storhelgsrad: List[dict] = []
+    for foralder_key, namn, fk_r, fl_r, ki, nettolön_mån in [
+        ("a", indata.foraldrar_a.namn, fk_r_a, fl_r_a, ki_a, nettolön_mån_a),
+        ("b", indata.foraldrar_b.namn, fk_r_b, fl_r_b, ki_b, nettolön_mån_b),
+    ]:
+        netto_dag = nettolön_mån / 21
+        fk_dag    = fk_r["fk_netto/dag"]
+        fl_dag    = (fl_r["foraldralon/mån"] * (1 - ki) / 21) if fl_r["max_månader"] > 0 else 0
+        sparad    = int(netto_dag - fk_dag - fl_dag)
+        if sparad <= 0:
+            continue
+        # Alla måndagsdatum där denna förälder har FK-dagar
+        fk_veckor = {v["datum_start"] for v in veckor if v[f"fk_{foralder_key}"] > 0}
+        for rod_dag_str in sorted(RODA_DAGAR):
+            rod_dag = date.fromisoformat(rod_dag_str)
+            if rod_dag.weekday() >= 5:          # hoppa över lördag och söndag
+                continue
+            monday = rod_dag - timedelta(days=rod_dag.weekday())
+            if monday in fk_veckor:
+                storhelgsrad.append({
+                    "foralder":     namn,
+                    "datum":        rod_dag_str,
+                    "veckodag":     _VECKODAGAR[rod_dag.weekday()],
+                    "fk_netto_dag": int(fk_dag),
+                    "lon_netto_dag": int(netto_dag),
+                    "sparad_krona": sparad,
+                    "meddelande":   f"{namn} sparar ~{sparad} kr på att ta semester istf FK denna dag.",
+                })
 
     df = _DF(veckor)
 
@@ -1250,4 +1303,5 @@ def berakna(indata: Indata):
         "dubbeldagar_totalt": dubbel_dagar_totalt,
         "dubbeldagar_varning": dubbel_varning,
         "semesterintjanande": semesterintjanande,
+        "storhelgsrad":       storhelgsrad,
     }

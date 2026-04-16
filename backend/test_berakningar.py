@@ -729,3 +729,77 @@ class TestPeriodOverlapp:
                 {"start": "2026-01-05", "slut": "2026-03-31", "dagar_per_vecka": 5},
                 {"start": "2026-03-31", "slut": "2026-06-30", "dagar_per_vecka": 5},
             ])
+
+
+# ============================================================
+# 13. U9: Storhelgsråd med sparad_krona
+# ============================================================
+
+class TestStorhelgsrad:
+    """POST /berakna ska returnera 'storhelgsrad'-lista med ekonomiska råd för röda dagar."""
+
+    def _client(self):
+        from fastapi.testclient import TestClient
+        from main import app
+        return TestClient(app)
+
+    def _payload(self, perioder_a, perioder_b=None):
+        return {
+            "foraldrar_a": {
+                "namn": "Anna", "manadslon": 40000,
+                "kollektivavtal": "Ingen föräldralön", "anstallning": 24,
+                "perioder": perioder_a,
+            },
+            "foraldrar_b": {
+                "namn": "Bo", "manadslon": 40000,
+                "kollektivavtal": "Ingen föräldralön", "anstallning": 24,
+                "perioder": perioder_b or [],
+            },
+        }
+
+    def test_storhelgsrad_finns_i_svar(self):
+        """Svaret ska innehålla nyckeln 'storhelgsrad' som en lista."""
+        client = self._client()
+        # Täcker maj 2026: 1 maj (fredag, röd dag) och Kr. himmelsfärdsdag 14 maj (torsdag)
+        resp = client.post("/berakna", json=self._payload(
+            [{"start": "2026-04-27", "slut": "2026-05-29", "dagar_per_vecka": 5}]
+        ))
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "storhelgsrad" in data
+        assert isinstance(data["storhelgsrad"], list)
+
+    def test_sparad_krona_positiv_for_foralder_med_lon(self):
+        """sparad_krona ska vara > 0 för en förälder med lön (netto_dag > fk_dag)."""
+        client = self._client()
+        resp = client.post("/berakna", json=self._payload(
+            [{"start": "2026-04-27", "slut": "2026-05-29", "dagar_per_vecka": 5}]
+        ))
+        rader = resp.json()["storhelgsrad"]
+        assert len(rader) > 0, "Ska ha minst ett råd för perioden som täcker röda dagar i maj 2026"
+        for rad in rader:
+            assert rad["sparad_krona"] > 0
+            assert rad["fk_netto_dag"] > 0
+            assert rad["lon_netto_dag"] > rad["fk_netto_dag"]
+
+    def test_rod_dag_pa_helg_genererar_ingen_rad(self):
+        """Röda dagar som faller på lördag eller söndag ska inte generera råd.
+        2026-12-26 (annandag jul) är en lördag — ska inte finnas i storhelgsrad."""
+        from datetime import date
+        from main import RODA_DAGAR
+
+        # Verifiera att 2026-12-26 är en röd dag och en lördag
+        assert "2026-12-26" in RODA_DAGAR
+        assert date(2026, 12, 26).weekday() == 5  # lördag
+
+        client = self._client()
+        # Period som täcker jul 2026
+        resp = client.post("/berakna", json=self._payload(
+            [{"start": "2026-12-21", "slut": "2027-01-07", "dagar_per_vecka": 5}]
+        ))
+        rader = resp.json()["storhelgsrad"]
+        datum_i_svar = [r["datum"] for r in rader]
+        assert "2026-12-26" not in datum_i_svar, "Lördag ska inte generera storhelgsråd"
+        # Alla datum i svaret ska vara vardagar (weekday < 5)
+        for rad in rader:
+            assert date.fromisoformat(rad["datum"]).weekday() < 5
