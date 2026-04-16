@@ -116,6 +116,18 @@ class ForaldrarIndata(BaseModel):
     fast_belopp: float = Field(0.0, ge=0.0, description="Fast månatlig föräldralön (kr) när kollektivavtal='Ange föräldralön själv'")
     anstallningstid_manader: Optional[int] = Field(None, ge=0, description="Anställningstid i månader (None = okänd → generöst default, dvs max FL-månader)")
 
+    @field_validator("perioder")
+    @classmethod
+    def validera_inga_overlapp(cls, perioder):
+        sorterade = sorted(perioder, key=lambda p: p.start)
+        for i in range(len(sorterade) - 1):
+            if sorterade[i].slut >= sorterade[i + 1].start:
+                raise ValueError(
+                    f"Period {i + 1} ({sorterade[i].start}–{sorterade[i].slut}) "
+                    f"överlappar period {i + 2} ({sorterade[i + 1].start}–{sorterade[i + 1].slut})"
+                )
+        return perioder
+
 
 class Indata(BaseModel):
     """Alla indata till /berakna-endpointen."""

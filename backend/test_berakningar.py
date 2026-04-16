@@ -687,3 +687,45 @@ class TestErsattningPerDag:
             # fl_netto vid 50% ska vara ≈ hälften (dag 1-5 har FL, dag 6-7 FL=0)
             assert abs(rows50[d]["fl_netto"] - rows100[d]["fl_netto"] / 2) <= 5, \
                 f"dag {d}: fl_netto@50%={rows50[d]['fl_netto']} != ~{rows100[d]['fl_netto']/2:.0f}"
+
+
+# ============================================================
+# 12. E-03: Validering av period-överlapp
+# ============================================================
+
+class TestPeriodOverlapp:
+    """ForaldrarIndata.perioder ska kasta ValueError vid överlappande perioder."""
+
+    def _indata(self, perioder_payload):
+        from main import ForaldrarIndata
+        return ForaldrarIndata(
+            namn="Test",
+            manadslon=40000,
+            kollektivavtal="Ingen föräldralön",
+            perioder=perioder_payload,
+        )
+
+    def test_icke_overlappande_perioder_ok(self):
+        """Två perioder utan överlapp ska accepteras utan fel."""
+        self._indata([
+            {"start": "2026-01-05", "slut": "2026-03-31", "dagar_per_vecka": 5},
+            {"start": "2026-04-01", "slut": "2026-06-30", "dagar_per_vecka": 5},
+        ])  # ingen exception = OK
+
+    def test_overlappande_perioder_ger_valueerror(self):
+        """Perioder där period 1 slutar efter att period 2 börjar ska ge ValueError."""
+        with pytest.raises(Exception) as exc:
+            self._indata([
+                {"start": "2026-01-05", "slut": "2026-04-15", "dagar_per_vecka": 5},
+                {"start": "2026-04-01", "slut": "2026-06-30", "dagar_per_vecka": 5},
+            ])
+        assert "överlappar" in str(exc.value).lower() or "overlapp" in str(exc.value).lower() \
+            or "period" in str(exc.value).lower()
+
+    def test_angransande_perioder_ger_valueerror(self):
+        """Angränsande perioder där slut == start räknas som överlapp (samma dag)."""
+        with pytest.raises(Exception):
+            self._indata([
+                {"start": "2026-01-05", "slut": "2026-03-31", "dagar_per_vecka": 5},
+                {"start": "2026-03-31", "slut": "2026-06-30", "dagar_per_vecka": 5},
+            ])
