@@ -352,3 +352,197 @@ class TestFkGrad:
         res50  = rakna(vecka_50)
         # fk_netto vid 50% ska vara ungefär hälften av 100%
         assert res50["fk_netto"] == pytest.approx(res100["fk_netto"] / 2, abs=50)
+
+
+# ============================================================
+# 9. B-03: Statliga sektorn – steg-modell (alla steg)
+# ============================================================
+
+class TestStatligaSektorn:
+    """max_fl_man() och KOLLEKTIVAVTAL för Statliga sektorn ska följa steg-modell
+    identisk med AB-avtalet: 12→2, 24→3, 36→4, 48→5, 60→6 månader FL."""
+
+    def test_under_12_man_ger_noll(self):
+        assert max_fl_man("Statliga sektorn", 11) == 0
+
+    def test_exakt_12_man_ger_2(self):
+        assert max_fl_man("Statliga sektorn", 12) == 2
+
+    def test_23_man_stannar_pa_2(self):
+        assert max_fl_man("Statliga sektorn", 23) == 2
+
+    def test_exakt_24_man_ger_3(self):
+        assert max_fl_man("Statliga sektorn", 24) == 3
+
+    def test_35_man_stannar_pa_3(self):
+        assert max_fl_man("Statliga sektorn", 35) == 3
+
+    def test_exakt_36_man_ger_4(self):
+        assert max_fl_man("Statliga sektorn", 36) == 4
+
+    def test_47_man_stannar_pa_4(self):
+        assert max_fl_man("Statliga sektorn", 47) == 4
+
+    def test_exakt_48_man_ger_5(self):
+        assert max_fl_man("Statliga sektorn", 48) == 5
+
+    def test_59_man_stannar_pa_5(self):
+        assert max_fl_man("Statliga sektorn", 59) == 5
+
+    def test_exakt_60_man_ger_6(self):
+        assert max_fl_man("Statliga sektorn", 60) == 6
+
+    def test_over_60_man_ger_6(self):
+        assert max_fl_man("Statliga sektorn", 120) == 6
+
+    def test_none_anstallning_ger_6(self):
+        """None-anställningstid → generöst default → 6 FL-månader."""
+        assert max_fl_man("Statliga sektorn", None) == 6
+
+    def test_kollektivavtal_har_steg_modell(self):
+        """KOLLEKTIVAVTAL['Statliga sektorn'] ska använda steg-modell, inte max_manader_kort/lang."""
+        avtal = KOLLEKTIVAVTAL["Statliga sektorn"]
+        assert "steg" in avtal
+        assert "max_manader_kort" not in avtal
+        assert "max_manader_lang" not in avtal
+
+    def test_kollektivavtal_steg_identisk_med_ab(self):
+        """Statliga sektorns steg-lista ska vara identisk med AB-avtalets."""
+        assert KOLLEKTIVAVTAL["Statliga sektorn"]["steg"] == KOLLEKTIVAVTAL["AB-avtalet"]["steg"]
+
+
+# ============================================================
+# 10. D-04a: Semesterintjänande (SemL 17a §)
+# ============================================================
+
+class TestSemesterintjanande:
+    """Semestergrundande FK-dagar räknas upp till 120 per förälder.
+    API-svaret ska innehålla semesterintjanande-nyckel med dagar_a/b och grans_a/b."""
+
+    def _rakna_sem(self, fk_dagar_per_vecka_a, fk_dagar_per_vecka_b, grans=120):
+        """Replikerar D-04a-logiken från main.py."""
+        fk_tot_a = sum(min(d, 5) for d in fk_dagar_per_vecka_a)
+        fk_tot_b = sum(min(d, 5) for d in fk_dagar_per_vecka_b)
+        return {
+            "dagar_a": min(fk_tot_a, grans),
+            "dagar_b": min(fk_tot_b, grans),
+            "grans_a": grans,
+            "grans_b": grans,
+            "over_grans_a": fk_tot_a > grans,
+            "over_grans_b": fk_tot_b > grans,
+            "_fk_tot_a": fk_tot_a,
+            "_fk_tot_b": fk_tot_b,
+        }
+
+    def test_noll_fk_dagar_ger_noll_sem(self):
+        res = self._rakna_sem([0] * 10, [0] * 10)
+        assert res["dagar_a"] == 0
+        assert res["dagar_b"] == 0
+
+    def test_24_veckor_5_dagar_ger_120(self):
+        """24 veckor × 5 FK-dagar = 120 → precis på gränsen."""
+        res = self._rakna_sem([5] * 24, [0] * 24)
+        assert res["dagar_a"] == 120
+        assert not res["over_grans_a"]
+
+    def test_25_veckor_5_dagar_cappar_pa_120(self):
+        """25 veckor × 5 FK-dagar = 125 → cappas till 120."""
+        res = self._rakna_sem([5] * 25, [0] * 25)
+        assert res["dagar_a"] == 120
+        assert res["over_grans_a"]
+
+    def test_lg_dagar_over_5_raknas_inte(self):
+        """FK-dagar 6-7 (lägstanivå) är ej semestergrundande (räknas max 5/vecka)."""
+        # 10 veckor med 7 fk-dagar (inkl helg) → 10×5 = 50, inte 10×7 = 70
+        res = self._rakna_sem([7] * 10, [0] * 10)
+        assert res["dagar_a"] == 50
+
+    def test_varning_genereras_over_grans(self):
+        """Varning ska sättas när FK-dagar > 120."""
+        res = self._rakna_sem([5] * 25, [5] * 25)
+        assert res["over_grans_a"]
+        assert res["over_grans_b"]
+
+    def test_ingen_varning_vid_exakt_120(self):
+        """Ingen varning vid exakt 120 FK-dagar (gränsen är strikt >)."""
+        res = self._rakna_sem([5] * 24, [5] * 24)
+        assert not res["over_grans_a"]
+        assert not res["over_grans_b"]
+
+    def test_grans_falt_ar_alltid_120(self):
+        """grans_a och grans_b ska alltid vara 120."""
+        res = self._rakna_sem([3] * 10, [1] * 10)
+        assert res["grans_a"] == 120
+        assert res["grans_b"] == 120
+
+    def test_a_och_b_raknas_oberoende(self):
+        """Förälder A och B räknas separat."""
+        res = self._rakna_sem([5] * 10, [5] * 5)
+        assert res["dagar_a"] == 50
+        assert res["dagar_b"] == 25
+
+    def test_api_svar_innehaller_semesterintjanande(self):
+        """POST /berakna ska returnera 'semesterintjanande'-nyckel med rätt struktur."""
+        from fastapi.testclient import TestClient
+        from main import app
+
+        client = TestClient(app)
+        payload = {
+            "foraldrar_a": {
+                "namn": "A",
+                "manadslon": 40000,
+                "kollektivavtal": "Ingen föräldralön",
+                "anstallning": 24,
+                "perioder": [{"start": "2026-03-02", "slut": "2026-06-26", "dagar_per_vecka": 5}],
+            },
+            "foraldrar_b": {
+                "namn": "B",
+                "manadslon": 40000,
+                "kollektivavtal": "Ingen föräldralön",
+                "anstallning": 24,
+                "perioder": [],
+            },
+        }
+        resp = client.post("/berakna", json=payload)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "semesterintjanande" in data
+        si = data["semesterintjanande"]
+        assert "dagar_a" in si
+        assert "dagar_b" in si
+        assert si["grans_a"] == 120
+        assert si["grans_b"] == 120
+        assert isinstance(si["dagar_a"], int)
+        assert 0 <= si["dagar_a"] <= 120
+
+    def test_api_varning_vid_over_120(self):
+        """varning_a ska sättas i API-svaret när A överstiger 120 FK-dagar."""
+        from fastapi.testclient import TestClient
+        from main import app
+
+        client = TestClient(app)
+        # ~6 månader heltids-FK (26 veckor × 5 = 130 dagar > 120)
+        payload = {
+            "foraldrar_a": {
+                "namn": "Anna",
+                "manadslon": 40000,
+                "kollektivavtal": "Ingen föräldralön",
+                "anstallning": 24,
+                "perioder": [{"start": "2026-01-05", "slut": "2026-07-03", "dagar_per_vecka": 5}],
+            },
+            "foraldrar_b": {
+                "namn": "Bo",
+                "manadslon": 40000,
+                "kollektivavtal": "Ingen föräldralön",
+                "anstallning": 24,
+                "perioder": [],
+            },
+        }
+        resp = client.post("/berakna", json=payload)
+        assert resp.status_code == 200
+        si = resp.json()["semesterintjanande"]
+        assert si["dagar_a"] == 120   # cappat
+        assert si["varning_a"] is not None
+        assert "Anna" in si["varning_a"]
+        assert "SemL 17a §" in si["varning_a"]
+        assert si["varning_b"] is None

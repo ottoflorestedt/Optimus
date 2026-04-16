@@ -1196,6 +1196,26 @@ def berakna(indata: Indata):
     if dubbel_dagar_totalt > 60:
         dubbel_varning = f"Planen innehåller uppskattningsvis {dubbel_dagar_totalt} dubbeldagar. Föräldrabalken tillåter max 60 dubbeldagar före barnets 15-månadersdag."
 
+    # ── D-04a: Semesterintjänande (SemL 17a §) ────────────────────
+    # FK-dagar (SGI-dagar, max 5/vecka) är semestergrundande upp till 120 per förälder.
+    _SEM_GRANS = 120
+    _fk_tot_a = sum(min(v["fk_a"], 5) for v in veckor)
+    _fk_tot_b = sum(min(v["fk_b"], 5) for v in veckor)
+    semesterintjanande = {
+        "dagar_a": min(_fk_tot_a, _SEM_GRANS),
+        "dagar_b": min(_fk_tot_b, _SEM_GRANS),
+        "grans_a": _SEM_GRANS,
+        "grans_b": _SEM_GRANS,
+        "varning_a": (
+            f"{indata.foraldrar_a.namn} har {_fk_tot_a} FK-dagar — gränsen på {_SEM_GRANS} semestergrundande dagar (SemL 17a §) passeras."
+            if _fk_tot_a > _SEM_GRANS else None
+        ),
+        "varning_b": (
+            f"{indata.foraldrar_b.namn} har {_fk_tot_b} FK-dagar — gränsen på {_SEM_GRANS} semestergrundande dagar (SemL 17a §) passeras."
+            if _fk_tot_b > _SEM_GRANS else None
+        ),
+    }
+
     return {
         "plan_veckor":     plan_veckor,
         "manadsinkomst_a": komp_a,
@@ -1207,4 +1227,5 @@ def berakna(indata: Indata):
         "varningar_helg": helgkoppling_varningar,
         "dubbeldagar_totalt": dubbel_dagar_totalt,
         "dubbeldagar_varning": dubbel_varning,
+        "semesterintjanande": semesterintjanande,
     }
