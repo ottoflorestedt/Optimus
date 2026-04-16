@@ -774,29 +774,31 @@ def _komponenter_manad(ar, man, veckor, df, lon, nettolön_mån, ki,
 
 # ── Hjälpfunktion: FK+FL-tabell per antal dagar ──────────────
 
-def _ersattning_tabell(manadslon: int, avtal: str, anstallning: int, ki: float) -> List[dict]:
+def _ersattning_tabell(manadslon: int, avtal: str, anstallning: int, ki: float, fk_grad: int = 100) -> List[dict]:
     """
     Returnerar en lista med 7 rader (dagar 1–7) med fk_netto, fl_netto och totalt per månad.
 
-    FK-dagar 1–5 ger SGI-baserad ersättning.
-    FK-dagar 6–7 ger lägstanivå (180 kr/dag brutto).
+    A-06: Alla 7 dagar ger sjukpenningnivå (fk_ndag). Lägstanivå används ej i
+    ersättningsslider — slidern visar SGI-baserad ersättning för att ge korrekt
+    ekonomisk bild av heltids- vs helguttag.
+    C-03a: fk_grad (25/50/75/100) skalar FK- och FL-ersättning proportionellt.
     Föräldralön betalas enbart för dagar 1–5 (ej helgdagar).
     """
     fk_r  = berakna_fk_ersattning(manadslon, ki)
     fl_r  = berakna_foraldralon(manadslon, avtal, anstallning)
 
     fk_ndag = fk_r["fk_netto/dag"]
-    lg_ndag = 180 * (1 - ki)
     dpm_per_dag = 365 / 7 / 12          # dagar per månad per veckodag ≈ 4.345
+    grad = fk_grad / 100                # C-03a: skalningsfaktor
 
     fl_netto_full = fl_r["foraldralon/mån"] * (1 - ki) if fl_r["max_månader"] > 0 else 0.0
 
     rows: List[dict] = []
     for d in range(1, 8):
-        sgi_dagar = min(d, 5) * dpm_per_dag
-        lg_dagar  = max(d - 5, 0) * dpm_per_dag
-        fk_netto  = round(fk_ndag * sgi_dagar + lg_ndag * lg_dagar)
-        fl_netto  = round(fl_netto_full * min(d, 5) / 5)
+        # A-06: alla d dagar på sjukpenningnivå (fk_ndag), inte lägstanivå för dag 6-7
+        fk_netto = round(fk_ndag * d * dpm_per_dag * grad)
+        # FL gäller dag 1-5 och skalas med grad (C-03a)
+        fl_netto = round(fl_netto_full * min(d, 5) / 5 * grad)
         rows.append({"dagar": d, "fk_netto": fk_netto, "fl_netto": fl_netto, "totalt": fk_netto + fl_netto})
     return rows
 
@@ -816,15 +818,20 @@ def ersattning_per_dag(
     avtal_a: str = "Ingen föräldralön",
     kommun_kod_a: Optional[str] = None,
     anstallning_a: int = 12,
+    fk_grad_a: int = 100,
     manadslon_b: int = 40000,
     avtal_b: str = "Ingen föräldralön",
     kommun_kod_b: Optional[str] = None,
     anstallning_b: int = 12,
+    fk_grad_b: int = 100,
     kommun: str = "Stockholm",
 ):
     """
     Returnerar en tabell (dagar 1–7 per vecka) med fk_netto, fl_netto och totalt
     för varje förälder. Används för att visa förväntad månadsersättning per ambitionsnivå.
+
+    A-06: dag 6–7 beräknas på sjukpenningnivå (ej lägstanivå).
+    C-03a: fk_grad_a/fk_grad_b (25/50/75/100) skalar FK- och FL-ersättning.
     """
     def _ki(kommun_kod: Optional[str]) -> float:
         namn = kommunkod_till_namn(kommun_kod) if kommun_kod else kommun
@@ -834,8 +841,8 @@ def ersattning_per_dag(
     ki_b = _ki(kommun_kod_b)
 
     return {
-        "foraldrar_a": _ersattning_tabell(manadslon_a, avtal_a, anstallning_a, ki_a),
-        "foraldrar_b": _ersattning_tabell(manadslon_b, avtal_b, anstallning_b, ki_b),
+        "foraldrar_a": _ersattning_tabell(manadslon_a, avtal_a, anstallning_a, ki_a, fk_grad_a),
+        "foraldrar_b": _ersattning_tabell(manadslon_b, avtal_b, anstallning_b, ki_b, fk_grad_b),
     }
 
 

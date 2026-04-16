@@ -546,3 +546,79 @@ class TestSemesterintjanande:
         assert "Anna" in si["varning_a"]
         assert "SemL 17a §" in si["varning_a"]
         assert si["varning_b"] is None
+
+
+# ============================================================
+# 11. /ersattning_per_dag – integrationstester (A-06, C-03a)
+# ============================================================
+
+class TestErsattningPerDag:
+    """Integrationstester mot GET /ersattning_per_dag.
+
+    Verifierar:
+      A-06  – dag 6-7 beräknas på sjukpenningnivå (fk_ndag), inte lägstanivå.
+      C-03a – fk_grad_a/b skalar FK- och FL-ersättning korrekt.
+      Struktur – svaret innehåller fl_netto för alla 7 nivåer.
+    """
+
+    def _client(self):
+        from fastapi.testclient import TestClient
+        from main import app
+        return TestClient(app)
+
+    def test_svar_struktur_7_rader_med_fl_netto(self):
+        """Svaret ska ha 7 rader per förälder, var och en med fk_netto, fl_netto och totalt."""
+        client = self._client()
+        resp = client.get("/ersattning_per_dag", params={
+            "manadslon_a": 50000, "avtal_a": "Unionen", "anstallning_a": 24,
+            "manadslon_b": 40000, "avtal_b": "Ingen föräldralön", "anstallning_b": 24,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        for parent in ("foraldrar_a", "foraldrar_b"):
+            rows = data[parent]
+            assert len(rows) == 7
+            for i, row in enumerate(rows, start=1):
+                assert row["dagar"] == i
+                assert "fk_netto" in row
+                assert "fl_netto" in row
+                assert "totalt" in row
+                assert row["totalt"] == row["fk_netto"] + row["fl_netto"]
+
+    def test_a06_dag_6_7_hogre_an_lagstaniva(self):
+        """A-06: dag 6 och 7 ska ge mer än lägstanivå (180 kr/dag brutto).
+        Med 40 000 kr/mån är fk_ndag ≈ 1 020 kr/dag >> 180 kr/dag lägstanivå.
+        dag7_fk ska vara >  dag5_fk × 7/5 × 0.9 (rimlig undre gräns om alla på sjukpenningnivå)."""
+        client = self._client()
+        resp = client.get("/ersattning_per_dag", params={"manadslon_a": 40000})
+        rows = resp.json()["foraldrar_a"]
+        by_dag = {r["dagar"]: r for r in rows}
+
+        # dag 6 ska ge mer FK-netto än dag 5 (sjukpenningnivå, inte noll/lägstanivå)
+        assert by_dag[6]["fk_netto"] > by_dag[5]["fk_netto"]
+        assert by_dag[7]["fk_netto"] > by_dag[6]["fk_netto"]
+
+        # Proportionalitet: dag 7 / dag 5 ≈ 7/5
+        ratio = by_dag[7]["fk_netto"] / by_dag[5]["fk_netto"]
+        assert 1.3 < ratio < 1.5  # 7/5 = 1.4
+
+    def test_c03a_fk_grad_50_ger_halv_ersattning(self):
+        """C-03a: fk_grad_a=50 ska ge ungefär hälften av fk_netto och fl_netto jämfört med fk_grad_a=100."""
+        client = self._client()
+
+        resp100 = client.get("/ersattning_per_dag", params={
+            "manadslon_a": 50000, "avtal_a": "Unionen", "anstallning_a": 24, "fk_grad_a": 100,
+        })
+        resp50 = client.get("/ersattning_per_dag", params={
+            "manadslon_a": 50000, "avtal_a": "Unionen", "anstallning_a": 24, "fk_grad_a": 50,
+        })
+        rows100 = {r["dagar"]: r for r in resp100.json()["foraldrar_a"]}
+        rows50  = {r["dagar"]: r for r in resp50.json()["foraldrar_a"]}
+
+        for d in range(1, 8):
+            # fk_netto vid 50% ska vara ≈ hälften (tolerans ±5 kr avrundning)
+            assert abs(rows50[d]["fk_netto"] - rows100[d]["fk_netto"] / 2) <= 5, \
+                f"dag {d}: fk_netto@50%={rows50[d]['fk_netto']} != ~{rows100[d]['fk_netto']/2:.0f}"
+            # fl_netto vid 50% ska vara ≈ hälften (dag 1-5 har FL, dag 6-7 FL=0)
+            assert abs(rows50[d]["fl_netto"] - rows100[d]["fl_netto"] / 2) <= 5, \
+                f"dag {d}: fl_netto@50%={rows50[d]['fl_netto']} != ~{rows100[d]['fl_netto']/2:.0f}"
